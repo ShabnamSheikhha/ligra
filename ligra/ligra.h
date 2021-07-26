@@ -524,6 +524,8 @@ void insert_edge(int src, int dst, chain *c);
 bool is_head(int node, chain *c);
 bool is_tail(int node, chain *c);
 
+void determine_dependency(chain* &c1, chain* &c2);
+
 bool is_head(int node, chain *c) {
     return !c->edges.empty() && node == c->edges[0].first;
 }
@@ -535,6 +537,25 @@ bool is_tail(int node, chain *c) {
 void insert_edge(int src, int dst, chain *c) {
     c->edges.emplace_back(src, dst);
     c->nodes.insert(src); c->nodes.insert(dst);
+}
+
+void determine_dependency(chain* &c1, chain* &c2) {
+    std::vector<int> common_data;
+    set_intersection(c1->nodes.begin(), c1->nodes.end(), c2->nodes.begin(), c2->nodes.end(), std::back_inserter(common_data));
+    if (!common_data.empty()) {
+        int intersection = common_data[0];
+        if (is_head(intersection, c1) and is_head(intersection, c2)) {
+            return;
+        } else if (is_tail(intersection, c1) and is_tail(intersection, c2)) {
+            return;
+        } else if (is_head(intersection, c1) or is_tail(intersection, c2)) {
+            c2->successors.push_back(c1);
+        } else if (is_head(intersection, c2) or is_tail(intersection, c1)) {
+            c1->successors.push_back(c2);
+        } else {
+            cout << "DA FUQ????" << endl;
+        }
+    }
 }
 
 
@@ -589,27 +610,7 @@ void partition(graph<vertex>& GA) {
         auto c1 = chains[i];
         for (int j = i + 1; j < chains.size(); j++) {
             auto c2 = chains[j];
-            std::vector<int> common_data;
-            set_intersection(c1->nodes.begin(), c1->nodes.end(), c2->nodes.begin(), c2->nodes.end(), std::back_inserter(common_data));
-            if (!common_data.empty()) {
-                int intersection = common_data[0];
-
-                // TODO make this all a function
-                if (is_head(intersection, c1) and is_head(intersection, c2)) {
-                    continue;
-                }
-                if (is_tail(intersection, c1) and is_tail(intersection, c2)) {
-                    continue;
-                }
-
-                if (is_head(intersection, c1) or is_tail(intersection, c2)) {
-                    c2->successors.push_back(c1);
-                } else if (is_head(intersection, c2) or is_tail(intersection, c1)) {
-                    c1->successors.push_back(c2);
-                } else {
-                    cout << "DA FUQ????" << endl;
-                }
-            }
+            determine_dependency(c1, c2);
         }
     }
 
