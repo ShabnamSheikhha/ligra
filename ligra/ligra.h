@@ -526,6 +526,8 @@ bool is_tail(uintE node, chain *c);
 
 void determine_dependency(chain* &c1, chain* &c2);
 
+void partition_chains(chain* root, uintE level, vector<chain *> &chains, map<chain *, bool> &chain_visited, map<uintE, vector<chain *> > &partitions);
+
 bool is_head(uintE node, chain *c) {
     return !c->edges.empty() && node == c->edges[0].first;
 }
@@ -589,13 +591,23 @@ void generate_chains(graph<vertex>& GA,
     }
 }
 
+void partition_chains(chain* root, uintE level, vector<chain *> &chains, map<chain *, bool> &chain_visited, map<uintE, vector<chain *> > &partitions) {
+        chain_visited[root] = true;
+        partitions[level].push_back(root);
+        for (auto succ: root->successors) {
+            if (!chain_visited[succ]) {
+                partition_chains(succ, level + 1, chains, chain_visited, partitions);
+            }
+        }
+}
+
 template<class vertex>
 void partition(graph<vertex>& GA) {
+
+    cout << "STEP 1: generating the chains" << endl;
     map<uintE, bool> vertex_visited;
     map<pair<uintE, uintE>, bool> edge_visited;
     vector<chain *> chains;
-
-    cout << "STEP 1: generating the chains" << endl;
     while (true) {
         int root = get_first_unvisited_vertex(GA, vertex_visited);
         if (root == -1) {
@@ -615,11 +627,20 @@ void partition(graph<vertex>& GA) {
     }
 
     cout << "STEP 3: generating the partitions" << endl;
-
-
-    cout << "STEP 4: printing the dependency graph" << endl;
+    map<chain *, bool> chain_visited;
+    map<uintE, vector<chain *> > partitions;
     for (auto chain: chains) {
-        print_chain(chain, true);
+        if (!chain_visited[chain]) {
+            partition_chains(chain, 0, chains, chain_visited, partitions);
+        }
+    }
+
+    cout << "STEP 4: printing out the partitions" << endl;
+    for (auto const &partition: partitions) {
+        cout << "level " << partition.first << " is: " << endl;
+        for (auto &chain: partition.second) {
+            print_chain(chain, true);
+        }
     }
 }
 
