@@ -65,7 +65,7 @@ struct chain{
     set<int> nodes;
     vector<pair<int, int> > edges;
 
-    vector<chain> successors;
+    vector<chain *> successors;
 };
 
 template <class data, class vertex, class VS, class F>
@@ -487,20 +487,54 @@ template<class vertex>
 bool has_unvisited_edge(graph<vertex>& GA, int source, map<pair<int, int>, bool>& edge_visited);
 
 template<class vertex>
-void partition_helper(graph<vertex>& GA, int root, int d, map<int, bool>& vertex_visited, map<pair<int, int>, bool>& edge_visited, chain &c, vector<chain>& chains);
+void partition_helper(graph<vertex>& GA, int root, int d, map<int, bool>& vertex_visited, map<pair<int, int>, bool>& edge_visited, chain *&current_chain, vector<chain *> &chains);
 
 template<class vertex>
 void partition(graph<vertex>& GA);
 
+void print_chain(chain *c, bool complete=false);
+
+void print_chain(chain *c, bool complete) {
+    cout << "************" << endl;
+
+    cout << "edges:" << endl;
+    for (auto edge: c->edges) {
+        cout << "<" << edge.first << ", " << edge.second << "> ";
+    }
+    cout << endl;
+
+    if (complete) {
+        cout << "successors:" << endl;
+        for (auto succ: c->successors) {
+            for (auto edge: succ->edges) {
+                cout << "<" << edge.first << ", " << edge.second << "> ";
+            }
+            cout << endl;
+        }
+
+        cout << "************" << endl;
+    }
+}
+
 template<class vertex>
 int get_first_unvisited_vertex(graph<vertex>& GA, map<int, bool> vertex_visited);
 
-void insert_edge(int src, int dst, chain &c);
+void insert_edge(int src, int dst, chain *c);
 
+bool is_head(int node, chain *c);
+bool is_tail(int node, chain *c);
 
-void insert_edge(int src, int dst, chain &c) {
-    c.edges.emplace_back(src, dst);
-    c.nodes.insert(src); c.nodes.insert(dst);
+bool is_head(int node, chain *c) {
+    return !c->edges.empty() && node == c->edges[0].first;
+}
+
+bool is_tail(int node, chain *c) {
+    return !c->edges.empty() && node == c->edges.back().first;
+}
+
+void insert_edge(int src, int dst, chain *c) {
+    c->edges.emplace_back(src, dst);
+    c->nodes.insert(src); c->nodes.insert(dst);
 }
 
 
@@ -508,7 +542,8 @@ template<class vertex>
 void partition_helper(graph<vertex>& GA,
                       int root, int d,
                       map<int, bool>& vertex_visited, map<pair<int, int>, bool>& edge_visited,
-                      chain &current_chain, vector<chain>& chains) {
+                      chain *&current_chain, vector<chain *> &chains) {
+
     vertex *G = GA.V;
     vertex_visited[root] = true;
     if (has_unvisited_edge(GA, root, edge_visited) and d < D_MAX) {
@@ -523,15 +558,13 @@ void partition_helper(graph<vertex>& GA,
                     partition_helper(GA, neigh, d + 1, vertex_visited, edge_visited, current_chain, chains);
                 } else {
                     chains.push_back(current_chain);
-                    current_chain = {};
-                    //cout << "\ncreating a new path" << endl;
+                    current_chain = new chain;
                 }
             }
         }
     } else {
         chains.push_back(current_chain);
-        current_chain = {};
-        // cout << "\ncreating a new path" << endl;
+        current_chain = new chain;
     }
 }
 
@@ -539,25 +572,50 @@ template<class vertex>
 void partition(graph<vertex>& GA) {
     map<int, bool> vertex_visited;
     map<pair<int, int>, bool> edge_visited;
-    vector<chain> chains;
+    vector<chain *> chains;
+
+    cout << "STEP 1: generating the chains" << endl;
     while (true) {
         int root = get_first_unvisited_vertex(GA, vertex_visited);
         if (root == -1) {
             break;
         }
-        chain c;
-        partition_helper(GA, root, 0, vertex_visited, edge_visited, c, chains);
+        auto* curr = new chain;
+        partition_helper(GA, root, 0, vertex_visited, edge_visited, curr, chains);
     }
-    // printing chains
+
+    cout << "STEP 2: generating dependency graph" << endl;
+    for (int i = 0; i < chains.size(); i++) {
+        auto c1 = chains[i];
+        for (int j = i + 1; j < chains.size(); j++) {
+            auto c2 = chains[j];
+            std::vector<int> common_data;
+            set_intersection(c1->nodes.begin(), c1->nodes.end(), c2->nodes.begin(), c2->nodes.end(), std::back_inserter(common_data));
+            if (!common_data.empty()) {
+                int intersection = common_data[0];
+
+                // TODO make this all a function
+                if (is_head(intersection, c1) and is_head(intersection, c2)) {
+                    continue;
+                }
+                if (is_tail(intersection, c1) and is_tail(intersection, c2)) {
+                    continue;
+                }
+
+                if (is_head(intersection, c1) or is_tail(intersection, c2)) {
+                    c2->successors.push_back(c1);
+                } else if (is_head(intersection, c2) or is_tail(intersection, c1)) {
+                    c1->successors.push_back(c2);
+                } else {
+                    cout << "DA FUQ????" << endl;
+                }
+            }
+        }
+    }
+
+    cout << "STEP 3: printing the dependency graph" << endl;
     for (auto chain: chains) {
-        for (auto node: chain.nodes) {
-            cout << node << " ";
-        }
-        cout << "| ";
-        for (auto edge: chain.edges) {
-            cout << "<" << edge.first << ", " << edge.second << "> ";
-        }
-        cout << endl;
+        print_chain(chain, true);
     }
 }
 
