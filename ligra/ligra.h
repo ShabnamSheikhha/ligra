@@ -487,7 +487,7 @@ template<class vertex>
 bool has_unvisited_edge(graph<vertex>& GA, uintE source, map<pair<uintE, uintE>, bool> &edge_visited);
 
 template<class vertex>
-void partition_helper(graph<vertex>& GA, uintE root, uintE d, map<uintE, bool> &vertex_visited, map<pair<uintE, uintE>, bool> &edge_visited, chain* &current_chain, vector<chain *> &chains);
+void generate_chains(graph<vertex>& GA, uintE root, uintE d, map<uintE, bool> &vertex_visited, map<pair<uintE, uintE>, bool> &edge_visited, chain* &current_chain, vector<chain *> &chains);
 
 template<class vertex>
 void partition(graph<vertex>& GA);
@@ -560,10 +560,10 @@ void determine_dependency(chain* &c1, chain* &c2) {
 
 
 template<class vertex>
-void partition_helper(graph<vertex>& GA,
-                      uintE root, uintE d,
-                      map<uintE, bool> &vertex_visited, map<pair<uintE, uintE>, bool> &edge_visited,
-                      chain *&current_chain, vector<chain *> &chains) {
+void generate_chains(graph<vertex>& GA,
+                     uintE root, uintE d,
+                     map<uintE, bool> &vertex_visited, map<pair<uintE, uintE>, bool> &edge_visited,
+                     chain *&current_chain, vector<chain *> &chains) {
 
     vertex *G = GA.V;
     vertex_visited[root] = true;
@@ -576,7 +576,7 @@ void partition_helper(graph<vertex>& GA,
                 edge_visited[edge] = true;
                 insert_edge(root, neigh, current_chain);
                 if (!vertex_visited[neigh]) {
-                    partition_helper(GA, neigh, d + 1, vertex_visited, edge_visited, current_chain, chains);
+                    generate_chains(GA, neigh, d + 1, vertex_visited, edge_visited, current_chain, chains);
                 } else {
                     chains.push_back(current_chain);
                     current_chain = new chain;
@@ -602,7 +602,7 @@ void partition(graph<vertex>& GA) {
             break;
         }
         auto* curr = new chain;
-        partition_helper(GA, (uintE) root, 0, vertex_visited, edge_visited, curr, chains);
+        generate_chains(GA, (uintE) root, 0, vertex_visited, edge_visited, curr, chains);
     }
 
     cout << "STEP 2: generating dependency graph" << endl;
@@ -614,7 +614,10 @@ void partition(graph<vertex>& GA) {
         }
     }
 
-    cout << "STEP 3: printing the dependency graph" << endl;
+    cout << "STEP 3: generating the partitions" << endl;
+
+
+    cout << "STEP 4: printing the dependency graph" << endl;
     for (auto chain: chains) {
         print_chain(chain, true);
     }
@@ -644,7 +647,6 @@ bool has_unvisited_edge(graph<vertex>& GA, uintE source, map<pair<uintE, uintE>,
     }
     return false;
 }
-
 
 
 int parallel_main(int argc, char* argv[]) {

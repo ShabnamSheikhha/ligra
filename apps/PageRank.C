@@ -86,7 +86,15 @@ void Compute(graph<vertex>& GA, commandLine P) {
   while(iter++ < maxIters) {
     edgeMap(GA,Frontier,PR_F<vertex>(p_curr,p_next,GA.V),0, no_output);
     vertexMap(Frontier,PR_Vertex_F(p_curr,p_next,damping,n));
-    //compute L1-norm between p_curr and p_next
+
+//    cout << "*******************" << endl;
+//    cout << "PR values for iteration #" << iter << endl;
+//    for (long i = 0; i < n; i++) {
+//        cout << "\tPR[" << i << "]: " << p_curr[i] << endl;
+//    }
+//    cout << "*******************" << endl;
+
+      //compute L1-norm between p_curr and p_next
     {parallel_for(long i=0;i<n;i++) {
       p_curr[i] = fabs(p_curr[i]-p_next[i]);
       }}
