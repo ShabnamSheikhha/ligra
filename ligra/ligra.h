@@ -40,6 +40,12 @@
 #include "parseCommandLine.h"
 #include "index_map.h"
 #include "edgeMap_utils.h"
+#include <vector>
+#include <set>
+#include<map>
+
+#define D_MAX 16
+
 using namespace std;
 
 //*****START FRAMEWORK*****
@@ -54,6 +60,13 @@ const flags remove_duplicates = 32;
 const flags no_dense = 64;
 const flags edge_parallel = 128;
 inline bool should_output(const flags& fl) { return !(fl & no_output); }
+
+struct chain{
+    set<int> nodes;
+    vector<pair<int, int> > edges;
+
+    vector<chain> successors;
+};
 
 template <class data, class vertex, class VS, class F>
 vertexSubsetData<data> edgeMapDense(graph<vertex> GA, VS& vertexSubset, F &f, const flags fl) {
@@ -469,6 +482,112 @@ void Compute(graph<vertex>&, commandLine);
 template<class vertex>
 void Compute(hypergraph<vertex>&, commandLine);
 
+
+template<class vertex>
+bool has_unvisited_edge(graph<vertex>& GA, int source, map<pair<int, int>, bool>& edge_visited);
+
+template<class vertex>
+void partition_helper(graph<vertex>& GA, int root, int d, map<int, bool>& vertex_visited, map<pair<int, int>, bool>& edge_visited, chain &c, vector<chain>& chains);
+
+template<class vertex>
+void partition(graph<vertex>& GA);
+
+template<class vertex>
+int get_first_unvisited_vertex(graph<vertex>& GA, map<int, bool> vertex_visited);
+
+void insert_edge(int src, int dst, chain &c);
+
+
+void insert_edge(int src, int dst, chain &c) {
+    c.edges.emplace_back(src, dst);
+    c.nodes.insert(src); c.nodes.insert(dst);
+}
+
+
+template<class vertex>
+void partition_helper(graph<vertex>& GA,
+                      int root, int d,
+                      map<int, bool>& vertex_visited, map<pair<int, int>, bool>& edge_visited,
+                      chain &current_chain, vector<chain>& chains) {
+    vertex *G = GA.V;
+    vertex_visited[root] = true;
+    if (has_unvisited_edge(GA, root, edge_visited) and d < D_MAX) {
+        // TODO: add sorting
+        for (int i = 0; i < G[root].getOutDegree(); i++) {
+            int neigh = G[root].getOutNeighbor(i);
+            pair<int, int> edge = make_pair(root, neigh);
+            if (!edge_visited[edge]) {
+                edge_visited[edge] = true;
+                insert_edge(root, neigh, current_chain);
+                if (!vertex_visited[neigh]) {
+                    partition_helper(GA, neigh, d + 1, vertex_visited, edge_visited, current_chain, chains);
+                } else {
+                    chains.push_back(current_chain);
+                    current_chain = {};
+                    //cout << "\ncreating a new path" << endl;
+                }
+            }
+        }
+    } else {
+        chains.push_back(current_chain);
+        current_chain = {};
+        // cout << "\ncreating a new path" << endl;
+    }
+}
+
+template<class vertex>
+void partition(graph<vertex>& GA) {
+    map<int, bool> vertex_visited;
+    map<pair<int, int>, bool> edge_visited;
+    vector<chain> chains;
+    while (true) {
+        int root = get_first_unvisited_vertex(GA, vertex_visited);
+        if (root == -1) {
+            break;
+        }
+        chain c;
+        partition_helper(GA, root, 0, vertex_visited, edge_visited, c, chains);
+    }
+    // printing chains
+    for (auto chain: chains) {
+        for (auto node: chain.nodes) {
+            cout << node << " ";
+        }
+        cout << "| ";
+        for (auto edge: chain.edges) {
+            cout << "<" << edge.first << ", " << edge.second << "> ";
+        }
+        cout << endl;
+    }
+}
+
+
+template<class vertex>
+int get_first_unvisited_vertex(graph<vertex>& GA, map<int, bool> vertex_visited) {
+    for (int i = 0; i < GA.n; i++) {
+        if (!vertex_visited[i]) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+
+template<class vertex>
+bool has_unvisited_edge(graph<vertex>& GA, int source, map<pair<int, int>, bool>& edge_visited) {
+    vertex *G = GA.V;
+    for (int i = 0; i < G[source].getOutDegree(); i++) {
+        int neigh = G[source].getOutNeighbor(i);
+        pair<int, int> edge = make_pair(source, neigh);
+        if (!edge_visited[edge]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+
+
 int parallel_main(int argc, char* argv[]) {
   commandLine P(argc,argv," [-s] <inFile>");
   char* iFile = P.getArgument(0);
@@ -490,6 +609,8 @@ int parallel_main(int argc, char* argv[]) {
       Compute(G,P);
       for(int r=0;r<rounds;r++) {
         startTime();
+          partition(G);
+          exit(0);
         Compute(G,P);
         nextTime("Running time");
       }
@@ -506,6 +627,8 @@ int parallel_main(int argc, char* argv[]) {
       if(G.transposed) G.transpose();
       for(int r=0;r<rounds;r++) {
         startTime();
+          partition(G);
+          exit(0);
         Compute(G,P);
         nextTime("Running time");
         if(G.transposed) G.transpose();
@@ -524,6 +647,8 @@ int parallel_main(int argc, char* argv[]) {
       Compute(G,P);
       for(int r=0;r<rounds;r++) {
         startTime();
+          partition(G);
+          exit(0);
         Compute(G,P);
         nextTime("Running time");
       }
@@ -540,6 +665,8 @@ int parallel_main(int argc, char* argv[]) {
       if(G.transposed) G.transpose();
       for(int r=0;r<rounds;r++) {
         startTime();
+          partition(G);
+          exit(0);
         Compute(G,P);
         nextTime("Running time");
         if(G.transposed) G.transpose();
