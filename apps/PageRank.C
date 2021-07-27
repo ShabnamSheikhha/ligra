@@ -94,22 +94,20 @@ void Compute(graph<vertex>& GA, commandLine P) {
     edgeMap(GA,Frontier,PR_F<vertex>(p_curr,p_next,GA.V),0, no_output, partitions);
     vertexMap(Frontier,PR_Vertex_F(p_curr,p_next,damping,n));
 
-//    cout << "*******************" << endl;
-//    cout << "PR values for iteration #" << iter << endl;
-//    for (long i = 0; i < n; i++) {
-//        cout << "\tPR[" << i << "]: " << p_curr[i] << endl;
-//    }
-//    cout << "*******************" << endl;
-
-      //compute L1-norm between p_curr and p_next
     {parallel_for(long i=0;i<n;i++) {
-      p_curr[i] = fabs(p_curr[i]-p_next[i]);
-      }}
-    double L1_norm = sequence::plusReduce(p_curr,n);
-    if(L1_norm < epsilon) break;
-    //reset p_curr
-    vertexMap(Frontier,PR_Vertex_Reset(p_curr));
-    swap(p_curr,p_next);
+            p_curr[i] = fabs(p_curr[i]-p_next[i]);
+        }}
+      double L1_norm = sequence::plusReduce(p_curr,n);
+      if(L1_norm < epsilon) break;
+      //reset p_curr
+      vertexMap(Frontier,PR_Vertex_Reset(p_curr));
+      swap(p_curr,p_next);
   }
-  Frontier.del(); free(p_curr); free(p_next); 
+
+    for (long i = 0; i < n; i++) {
+        cout << "\tPR[" << i << "]: " << p_next[i] << endl;
+    }
+
+    //compute L1-norm between p_curr and p_next
+    Frontier.del(); free(p_curr); free(p_next);
 }
