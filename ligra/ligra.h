@@ -170,16 +170,7 @@ vertexSubsetData<data> edgeMapDensePartitioned(graph<vertex> GA, VS& vertexSubse
             }
         }
     }
-//    for (auto create_partitions: partitions_gl) {
-//        parallel_for (int i = 0; i < create_partitions.size(); i++) {
-//            auto chain = create_partitions[i];
-//            for (auto v: chain) {
-//                if (f.cond(v)) {
-//                    G[v].decodeInNghBreakEarly(v, vertexSubset, f, g, fl & dense_parallel);
-//                }
-//            }
-//        }
-//    }
+
     return vertexSubsetData<data>(n);
 }
 
@@ -600,7 +591,7 @@ bool is_head(uintE node, chain *c) {
 }
 
 bool is_tail(uintE node, chain *c) {
-    return !c->edges.empty() && node == c->edges.back().first;
+    return !c->edges.empty() && node == c->edges.back().second;
 }
 
 void insert_edge(uintE src, uintE dst, chain *c) {
@@ -673,20 +664,17 @@ void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<cha
 template<class vertex>
 void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitions) {
 
-    //cout << "STEP 1: generating the chains" << endl;
+    cout << "STEP 1: generating the chains" << endl;
     map<uintE, bool> vertex_visited;
     map<pair<uintE, uintE>, bool> edge_visited;
     vector<chain *> chains;
-    while (true) {
-        int root = get_first_unvisited_vertex(GA, vertex_visited);
-        if (root == -1) {
-            break;
-        }
+    for (uintE root = 0; root < GA.n; root++) {
+        if (vertex_visited[root]) continue;
         auto *curr = new chain;
         generate_chains(GA, (uintE) root, 0, vertex_visited, edge_visited, curr, chains);
     }
 
-    //cout << "STEP 2: generating dependency graph" << endl;
+    cout << "STEP 2: generating dependency graph" << endl;
     for (uintE i = 0; i < chains.size(); i++) {
         auto c1 = chains[i];
         for (uintE j = i + 1; j < chains.size(); j++) {
@@ -695,7 +683,7 @@ void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitio
         }
     }
 
-    //cout << "STEP 3: generating the partitions_gl" << endl;
+    cout << "STEP 3: generating the partitions_gl" << endl;
     map<chain *, bool> chain_visited;
     for (auto chain: chains) {
         if (!chain_visited[chain]) {
