@@ -51,6 +51,13 @@ using namespace std;
 
 //*****START FRAMEWORK*****
 
+struct chain {
+    set<uintE> nodes;
+    vector<pair<uintE, uintE> > edges;
+
+    vector<chain *> successors;
+};
+
 typedef uint32_t flags;
 const flags no_output = 1;
 const flags pack_edges = 2;
@@ -60,13 +67,9 @@ const flags dense_parallel = 16;
 const flags remove_duplicates = 32;
 const flags no_dense = 64;
 const flags edge_parallel = 128;
+map<uintE, vector<chain *> > partitions;
 
-struct chain {
-    set<uintE> nodes;
-    vector<pair<uintE, uintE> > edges;
 
-    vector<chain *> successors;
-};
 
 void print_chain(chain *c, bool complete = false);
 
@@ -753,6 +756,9 @@ int parallel_main(int argc, char *argv[]) {
             hypergraph<compressedSymmetricVertex> G =
               readCompressedHypergraph<compressedSymmetricVertex>(iFile,symmetric,mmap); //symmetric graph
 #endif
+#if defined(PARTITION)
+            create_partitions(G, partitions);
+#endif
             Compute(G, P);
             for (int r = 0; r < rounds; r++) {
                 startTime();
@@ -767,6 +773,9 @@ int parallel_main(int argc, char *argv[]) {
 #else
             hypergraph<compressedAsymmetricVertex> G =
               readCompressedHypergraph<compressedAsymmetricVertex>(iFile,symmetric,mmap); //asymmetric graph
+#endif
+#if defined(PARTITION)
+            create_partitions(G, partitions);
 #endif
             Compute(G, P);
             if (G.transposed) G.transpose();
@@ -787,6 +796,9 @@ int parallel_main(int argc, char *argv[]) {
             hypergraph<symmetricVertex> G =
               readHypergraph<symmetricVertex>(iFile,compressed,symmetric,binary,mmap); //symmetric graph
 #endif
+#if defined(PARTITION)
+            create_partitions(G, partitions);
+#endif
             Compute(G, P);
             for (int r = 0; r < rounds; r++) {
                 startTime();
@@ -801,6 +813,10 @@ int parallel_main(int argc, char *argv[]) {
 #else
             hypergraph<asymmetricVertex> G =
               readHypergraph<asymmetricVertex>(iFile,compressed,symmetric,binary,mmap); //asymmetric graph
+#endif
+
+#if defined(PARTITION)
+            create_partitions(G, partitions);
 #endif
             Compute(G, P);
             if (G.transposed) G.transpose();
