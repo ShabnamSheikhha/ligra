@@ -344,12 +344,12 @@ vertexSubsetData<data> edgeMapData(graph<vertex> &GA, VS &vs, F f,
         if (frontierVertices) free(frontierVertices);
         vs.toDense();
         if (fl & dense_forward) {
-            edgeMapDenseForward<data, vertex, VS, F>(GA, vs, f, fl);
+            return edgeMapDenseForward<data, vertex, VS, F>(GA, vs, f, fl);
         } else {
             if (partitions.empty()) {
-                edgeMapDense<data, vertex, VS, F>(GA, vs, f, fl);
+                return edgeMapDense<data, vertex, VS, F>(GA, vs, f, fl);
             } else {
-                edgeMapDensePartitioned<data, vertex, VS, F>(GA, vs, f, fl, partitions);
+                return edgeMapDensePartitioned<data, vertex, VS, F>(GA, vs, f, fl, partitions);
             }
         }
     } else {
