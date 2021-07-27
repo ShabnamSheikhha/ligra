@@ -157,7 +157,8 @@ vertexSubsetData<data> edgeMapDensePartitioned(graph<vertex> GA, VS& vertexSubse
     auto g = get_emdense_nooutput_gen<data>();
 
     for (auto const &partition: partitions) {
-        for (auto &chain: partition.second) {
+            parallel_for (int i = 0; i < partition.second.size(); i++) {
+            auto chain = partition.second[i];
             for (auto edge: chain->edges) {
                 uintE src = edge.first, dst = edge.second;
                 if (vertexSubset.isIn(src) & f.cond(dst)) {

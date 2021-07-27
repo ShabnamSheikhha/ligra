@@ -37,6 +37,6 @@ else
 fi
 
 make clean > tmp.log
+rm tmp.log
 make -j $ALG
-$command
-#$command_with_log
+$command > $LOG_FILE
