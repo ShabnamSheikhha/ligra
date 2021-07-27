@@ -71,6 +71,13 @@ void Compute(graph<vertex>& GA, commandLine P) {
   long maxIters = P.getOptionLongValue("-maxiters",100);
   const intE n = GA.n;
   const double damping = 0.85, epsilon = 0.0000001;
+
+    map<uintE, vector<chain *> > partitions;
+
+#if defined(PARTITION)
+    create_partitions(GA, partitions);
+#endif
+
   
   double one_over_n = 1/(double)n;
   double* p_curr = newA(double,n);
@@ -84,7 +91,7 @@ void Compute(graph<vertex>& GA, commandLine P) {
   
   long iter = 0;
   while(iter++ < maxIters) {
-    edgeMap(GA,Frontier,PR_F<vertex>(p_curr,p_next,GA.V),0, no_output);
+    edgeMap(GA,Frontier,PR_F<vertex>(p_curr,p_next,GA.V),0, no_output, partitions);
     vertexMap(Frontier,PR_Vertex_F(p_curr,p_next,damping,n));
 
 //    cout << "*******************" << endl;

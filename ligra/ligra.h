@@ -61,14 +61,38 @@ const flags remove_duplicates = 32;
 const flags no_dense = 64;
 const flags edge_parallel = 128;
 
-inline bool should_output(const flags &fl) { return !(fl & no_output); }
-
 struct chain {
     set<uintE> nodes;
     vector<pair<uintE, uintE> > edges;
 
     vector<chain *> successors;
 };
+
+void print_chain(chain *c, bool complete = false);
+
+void print_chain(chain *c, bool complete) {
+    cout << "************" << endl;
+
+    cout << "edges:" << endl;
+    for (auto edge: c->edges) {
+        cout << "<" << edge.first << ", " << edge.second << "> ";
+    }
+    cout << endl;
+
+    if (complete) {
+        cout << "successors:" << endl;
+        for (auto succ: c->successors) {
+            for (auto edge: succ->edges) {
+                cout << "<" << edge.first << ", " << edge.second << "> ";
+            }
+            cout << endl;
+        }
+
+        cout << "************" << endl;
+    }
+}
+
+inline bool should_output(const flags &fl) { return !(fl & no_output); }
 
 template<class data, class vertex, class VS, class F>
 vertexSubsetData<data> edgeMapDense(graph<vertex> GA, VS &vertexSubset, F &f, const flags fl) {
@@ -96,6 +120,7 @@ vertexSubsetData<data> edgeMapDense(graph<vertex> GA, VS &vertexSubset, F &f, co
     }
 }
 
+
 template<class data, class vertex, class VS, class F>
 vertexSubsetData<data> edgeMapDenseForward(graph<vertex> GA, VS &vertexSubset, F &f, const flags fl) {
     using D = tuple<bool, data>;
@@ -120,6 +145,35 @@ vertexSubsetData<data> edgeMapDenseForward(graph<vertex> GA, VS &vertexSubset, F
         }
         return vertexSubsetData<data>(n);
     }
+}
+
+template <class data, class vertex, class VS, class F>
+vertexSubsetData<data> edgeMapDensePartitioned(graph<vertex> GA, VS& vertexSubset, F &f, const flags fl,
+                                               const map<uintE, vector<chain *> >& partitions) {
+
+    using D = tuple<bool, data>;
+    long n = GA.n;
+    vertex *G = GA.V;
+    auto g = get_emdense_nooutput_gen<data>();
+
+    for (auto const &partition: partitions) {
+        for (auto &chain: partition.second) {
+            for (auto edge: chain->edges) {
+                cout << "processing edge <" << edge.first << ", " << edge.second << ">" << endl;
+            }
+        }
+    }
+//    for (auto create_partitions: partitions) {
+//        parallel_for (int i = 0; i < create_partitions.size(); i++) {
+//            auto chain = create_partitions[i];
+//            for (auto v: chain) {
+//                if (f.cond(v)) {
+//                    G[v].decodeInNghBreakEarly(v, vertexSubset, f, g, fl & dense_parallel);
+//                }
+//            }
+//        }
+//    }
+    return vertexSubsetData<data>(n);
 }
 
 template<class data, class vertex, class VS, class F>
@@ -250,7 +304,8 @@ vertexSubsetData<data> edgeMapSparse_no_filter(graph<vertex> &GA,
 // Decides on sparse or dense base on number of nonzeros in the active vertices.
 template<class data, class vertex, class VS, class F>
 vertexSubsetData<data> edgeMapData(graph<vertex> &GA, VS &vs, F f,
-                                   intT threshold = -1, const flags &fl = 0) {
+                                   intT threshold = -1, const flags &fl = 0,
+                                   const map<uintE, vector<chain *> >& partitions={}) {
     long numVertices = GA.n, numEdges = GA.m, m = vs.numNonzeros();
     if (threshold == -1) threshold = numEdges / 20; //default threshold
     vertex *G = GA.V;
@@ -281,9 +336,15 @@ vertexSubsetData<data> edgeMapData(graph<vertex> &GA, VS &vs, F f,
         if (degrees) free(degrees);
         if (frontierVertices) free(frontierVertices);
         vs.toDense();
-        return (fl & dense_forward) ?
-               edgeMapDenseForward<data, vertex, VS, F>(GA, vs, f, fl) :
-               edgeMapDense<data, vertex, VS, F>(GA, vs, f, fl);
+        if (fl & dense_forward) {
+            edgeMapDenseForward<data, vertex, VS, F>(GA, vs, f, fl);
+        } else {
+            if (partitions.empty()) {
+                edgeMapDense<data, vertex, VS, F>(GA, vs, f, fl);
+            } else {
+                edgeMapDensePartitioned<data, vertex, VS, F>(GA, vs, f, fl, partitions);
+            }
+        }
     } else {
         auto vs_out =
                 (should_output(fl) && fl & sparse_no_filter) ? // only call snof when we output
@@ -299,8 +360,9 @@ vertexSubsetData<data> edgeMapData(graph<vertex> &GA, VS &vs, F f,
 // Regular edgeMap, where no extra data is stored per vertex.
 template<class vertex, class VS, class F>
 vertexSubset edgeMap(graph<vertex> &GA, VS &vs, F f,
-                     intT threshold = -1, const flags &fl = 0) {
-    return edgeMapData<pbbs::empty>(GA, vs, f, threshold, fl);
+                     intT threshold = -1, const flags &fl = 0,
+                     const map<uintE, vector<chain *> >& partitions={}) {
+    return edgeMapData<pbbs::empty>(GA, vs, f, threshold, fl, partitions);
 }
 
 // Packs out the adjacency lists of all vertex in vs. A neighbor, ngh, is kept
@@ -360,6 +422,8 @@ vertexSubsetData<uintE> packEdges(graph<vertex> &GA, vertexSubset &vs, P &p, con
     }
 }
 
+
+
 template<class vertex, class P>
 vertexSubsetData<uintE> edgeMapFilter(graph<vertex> &GA, vertexSubset &vs, P &p, const flags &fl = 0) {
     vs.toSparse();
@@ -395,8 +459,6 @@ vertexSubsetData<uintE> edgeMapFilter(graph<vertex> &GA, vertexSubset &vs, P &p,
         return vertexSubsetData<uintE>(n);
     }
 }
-
-
 
 //*****VERTEX FUNCTIONS*****
 
@@ -471,6 +533,7 @@ vertexSubset vertexFilter2(vertexSubset V, F filter) {
     return vertexSubset(n, out.size(), out.s);
 }
 
+
 template<class data, class F>
 vertexSubset vertexFilter2(vertexSubsetData<data> V, F filter) {
     long n = V.numRows(), m = V.numNonzeros();
@@ -491,16 +554,15 @@ vertexSubset vertexFilter2(vertexSubsetData<data> V, F filter) {
     return vertexSubset(n, out.size(), out.s);
 }
 
-
 //cond function that always returns true
 inline bool cond_true(intT d) { return 1; }
 
 template<class vertex>
 void Compute(graph<vertex> &, commandLine);
 
+
 template<class vertex>
 void Compute(hypergraph<vertex> &, commandLine);
-
 
 template<class vertex>
 bool has_unvisited_edge(graph<vertex> &GA, uintE source, map<pair<uintE, uintE>, bool> &edge_visited);
@@ -510,31 +572,7 @@ void generate_chains(graph<vertex> &GA, uintE root, uintE d, map<uintE, bool> &v
                      map<pair<uintE, uintE>, bool> &edge_visited, chain *&current_chain, vector<chain *> &chains);
 
 template<class vertex>
-void partition(graph<vertex> &GA, map<uintE, vector<chain *> > &partitions);
-
-void print_chain(chain *c, bool complete = false);
-
-void print_chain(chain *c, bool complete) {
-    cout << "************" << endl;
-
-    cout << "edges:" << endl;
-    for (auto edge: c->edges) {
-        cout << "<" << edge.first << ", " << edge.second << "> ";
-    }
-    cout << endl;
-
-    if (complete) {
-        cout << "successors:" << endl;
-        for (auto succ: c->successors) {
-            for (auto edge: succ->edges) {
-                cout << "<" << edge.first << ", " << edge.second << "> ";
-            }
-            cout << endl;
-        }
-
-        cout << "************" << endl;
-    }
-}
+void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitions);
 
 template<class vertex>
 int get_first_unvisited_vertex(graph<vertex> &GA, map<uintE, bool> vertex_visited);
@@ -584,7 +622,6 @@ void determine_dependency(chain *&c1, chain *&c2) {
     }
 }
 
-
 template<class vertex>
 void generate_chains(graph<vertex> &GA,
                      uintE root, uintE d,
@@ -627,7 +664,7 @@ void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<cha
 }
 
 template<class vertex>
-void partition(graph<vertex> &GA, map<uintE, vector<chain *> > &partitions) {
+void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitions) {
 
     cout << "STEP 1: generating the chains" << endl;
     map<uintE, bool> vertex_visited;
@@ -660,9 +697,9 @@ void partition(graph<vertex> &GA, map<uintE, vector<chain *> > &partitions) {
     }
 
 //    cout << "STEP 4: printing out the partitions" << endl;
-//    for (auto const &partition: partitions) {
-//        cout << "level " << partition.first << " is: " << endl;
-//        for (auto &chain: partition.second) {
+//    for (auto const &create_partitions: partitions) {
+//        cout << "level " << create_partitions.first << " is: " << endl;
+//        for (auto &chain: create_partitions.second) {
 //            print_chain(chain, true);
 //        }
 //    }
@@ -712,9 +749,6 @@ int parallel_main(int argc, char *argv[]) {
             hypergraph<compressedSymmetricVertex> G =
               readCompressedHypergraph<compressedSymmetricVertex>(iFile,symmetric,mmap); //symmetric graph
 #endif
-            map<uintE, vector<chain *> > partitions;
-            partition(G, partitions);
-
             Compute(G, P);
             for (int r = 0; r < rounds; r++) {
                 startTime();
@@ -730,8 +764,6 @@ int parallel_main(int argc, char *argv[]) {
             hypergraph<compressedAsymmetricVertex> G =
               readCompressedHypergraph<compressedAsymmetricVertex>(iFile,symmetric,mmap); //asymmetric graph
 #endif
-            map<uintE, vector<chain *> > partitions;
-            partition(G, partitions);
             Compute(G, P);
             if (G.transposed) G.transpose();
             for (int r = 0; r < rounds; r++) {
@@ -751,8 +783,6 @@ int parallel_main(int argc, char *argv[]) {
             hypergraph<symmetricVertex> G =
               readHypergraph<symmetricVertex>(iFile,compressed,symmetric,binary,mmap); //symmetric graph
 #endif
-            map<uintE, vector<chain *> > partitions;
-            partition(G, partitions);
             Compute(G, P);
             for (int r = 0; r < rounds; r++) {
                 startTime();
@@ -768,8 +798,6 @@ int parallel_main(int argc, char *argv[]) {
             hypergraph<asymmetricVertex> G =
               readHypergraph<asymmetricVertex>(iFile,compressed,symmetric,binary,mmap); //asymmetric graph
 #endif
-            map<uintE, vector<chain *> > partitions;
-            partition(G, partitions);
             Compute(G, P);
             if (G.transposed) G.transpose();
             for (int r = 0; r < rounds; r++) {
