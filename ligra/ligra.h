@@ -625,7 +625,6 @@ void generate_chains(graph<vertex> &GA,
                      uintE root, uintE d,
                      map<uintE, bool> &vertex_visited, map<pair<uintE, uintE>, bool> &edge_visited,
                      chain *&current_chain, vector<chain *> &chains) {
-
     vertex *G = GA.V;
     vertex_visited[root] = true;
     if (has_unvisited_edge(GA, root, edge_visited) and d < D_MAX) {
@@ -647,6 +646,9 @@ void generate_chains(graph<vertex> &GA,
     } else {
         chains.push_back(current_chain);
         current_chain = new chain;
+        if (G[root].getOutDegree() != 0) {
+            vertex_visited[root] = false;
+        }
     }
 }
 
@@ -691,13 +693,13 @@ void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitio
         }
     }
 
-//    cout << "STEP 4: printing out the partitions_gl" << endl;
-//    for (auto const &create_partitions: partitions_gl) {
-//        cout << "level " << create_partitions.first << " is: " << endl;
-//        for (auto &chain: create_partitions.second) {
-//            print_chain(chain, true);
-//        }
-//    }
+    cout << "STEP 4: printing out the partitions_gl" << endl;
+    for (auto const &create_partitions: partitions_gl) {
+        cout << "level " << create_partitions.first << " is: " << endl;
+        for (auto &chain: create_partitions.second) {
+            print_chain(chain, false);
+        }
+    }
 }
 
 

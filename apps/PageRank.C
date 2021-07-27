@@ -97,9 +97,9 @@ void Compute(graph<vertex>& GA, commandLine P) {
       swap(p_curr,p_next);
   }
 
-    for (long i = 0; i < n; i++) {
-        cout << "\tPR[" << i << "]: " << p_next[i] << endl;
-    }
+//    for (long i = 0; i < n; i++) {
+//        cout << "\tPR[" << i << "]: " << p_next[i] << endl;
+//    }
 
     //compute L1-norm between p_curr and p_next
     Frontier.del(); free(p_curr); free(p_next);
