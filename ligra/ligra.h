@@ -67,7 +67,7 @@ const flags dense_parallel = 16;
 const flags remove_duplicates = 32;
 const flags no_dense = 64;
 const flags edge_parallel = 128;
-map<uintE, vector<chain *> > partitions;
+map<uintE, vector<chain *> > partitions_gl;
 
 
 
@@ -170,7 +170,7 @@ vertexSubsetData<data> edgeMapDensePartitioned(graph<vertex> GA, VS& vertexSubse
             }
         }
     }
-//    for (auto create_partitions: partitions) {
+//    for (auto create_partitions: partitions_gl) {
 //        parallel_for (int i = 0; i < create_partitions.size(); i++) {
 //            auto chain = create_partitions[i];
 //            for (auto v: chain) {
@@ -695,7 +695,7 @@ void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitio
         }
     }
 
-    //cout << "STEP 3: generating the partitions" << endl;
+    //cout << "STEP 3: generating the partitions_gl" << endl;
     map<chain *, bool> chain_visited;
     for (auto chain: chains) {
         if (!chain_visited[chain]) {
@@ -703,8 +703,8 @@ void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitio
         }
     }
 
-//    cout << "STEP 4: printing out the partitions" << endl;
-//    for (auto const &create_partitions: partitions) {
+//    cout << "STEP 4: printing out the partitions_gl" << endl;
+//    for (auto const &create_partitions: partitions_gl) {
 //        cout << "level " << create_partitions.first << " is: " << endl;
 //        for (auto &chain: create_partitions.second) {
 //            print_chain(chain, true);
@@ -757,7 +757,7 @@ int parallel_main(int argc, char *argv[]) {
               readCompressedHypergraph<compressedSymmetricVertex>(iFile,symmetric,mmap); //symmetric graph
 #endif
 #if defined(PARTITION)
-            create_partitions(G, partitions);
+            create_partitions(G, partitions_gl);
 #endif
             Compute(G, P);
             for (int r = 0; r < rounds; r++) {
@@ -775,7 +775,7 @@ int parallel_main(int argc, char *argv[]) {
               readCompressedHypergraph<compressedAsymmetricVertex>(iFile,symmetric,mmap); //asymmetric graph
 #endif
 #if defined(PARTITION)
-            create_partitions(G, partitions);
+            create_partitions(G, partitions_gl);
 #endif
             Compute(G, P);
             if (G.transposed) G.transpose();
@@ -797,7 +797,7 @@ int parallel_main(int argc, char *argv[]) {
               readHypergraph<symmetricVertex>(iFile,compressed,symmetric,binary,mmap); //symmetric graph
 #endif
 #if defined(PARTITION)
-            create_partitions(G, partitions);
+            create_partitions(G, partitions_gl);
 #endif
             Compute(G, P);
             for (int r = 0; r < rounds; r++) {
@@ -816,7 +816,7 @@ int parallel_main(int argc, char *argv[]) {
 #endif
 
 #if defined(PARTITION)
-            create_partitions(G, partitions);
+            create_partitions(G, partitions_gl);
 #endif
             Compute(G, P);
             if (G.transposed) G.transpose();
