@@ -568,7 +568,7 @@ bool has_unvisited_edge(graph<vertex> &GA, uintE source, map<pair<uintE, uintE>,
 template<class vertex>
 void generate_chains(graph<vertex> &GA, uintE root,
                      int depth,
-                     map<uintE, bool> &vertex_visited, map<pair<uintE, uintE>, bool> &edge_visited,
+                     map<uintE, bool> &vertex_visited,
                      chain *&curr_chain, vector<chain *> &chains);
 
 template<class vertex>
@@ -622,15 +622,15 @@ void determine_dependency(chain *&c1, chain *&c2) {
 template<class vertex>
 void generate_chains(graph<vertex> &GA, uintE root,
                      int depth,
-                     map<uintE, bool> &vertex_visited, map<pair<uintE, uintE>, bool>& edge_visited,
+                     map<uintE, bool> &vertex_visited,
                      chain *&curr_chain, vector<chain *> &chains) {
     if (depth > MAX_DFS_DEPTH) {
         return;
     }
 
     if (curr_chain->edges.size() >= MAX_CHAIN_LENGTH) {
-        chains.push_back(curr_chain);
         curr_chain = new chain;
+        chains.push_back(curr_chain);
     }
 
     vertex *G = GA.V;
@@ -639,18 +639,17 @@ void generate_chains(graph<vertex> &GA, uintE root,
     for (uintE i = 0; i < G[root].getOutDegree(); i++) {
         uintE neigh = G[root].getOutNeighbor(i);
         insert_edge(root, neigh, curr_chain);
-        edge_visited[make_pair(root, neigh)] = true;
         if (!vertex_visited[neigh] ) {
             generate_chains(GA, neigh,
                             depth + 1,
-                            vertex_visited, edge_visited,
+                            vertex_visited,
                             curr_chain, chains);
         }
     }
-    if (find(chains.begin(), chains.end(), curr_chain) == chains.end()) {
-        chains.push_back(curr_chain);
-        curr_chain = new chain;
-    }
+//    if (find(chains.begin(), chains.end(), curr_chain) == chains.end()) {
+//        chains.push_back(curr_chain);
+//        curr_chain = new chain;
+//    }
 }
 
 void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<chain *, bool> &chain_visited,
@@ -667,12 +666,12 @@ void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<cha
 template<class vertex>
 void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitions) {
     map<uintE, bool> vertex_visited;
-    map<pair<uintE, uintE>, bool> edge_visited;
     vector<chain *> chains;
     for (uintE root = 0; root < GA.n; root++) {
         if (vertex_visited[root]) continue;
         auto *curr = new chain;
-        generate_chains(GA, (uintE) root, 0, vertex_visited, edge_visited, curr, chains);
+        chains.push_back(curr);
+        generate_chains(GA, (uintE) root, 0, vertex_visited, curr, chains);
     }
 
     int all = 0;
@@ -721,7 +720,9 @@ int parallel_main(int argc, char *argv[]) {
               readCompressedHypergraph<compressedSymmetricVertex>(iFile,symmetric,mmap); //symmetric graph
 #endif
 #if defined(PARTITION)
+            startTime();
             create_partitions(G, partitions_gl);
+            nextTime("Preprocessing time");
 #endif
             Compute(G, P);
             for (int r = 0; r < rounds; r++) {
@@ -739,7 +740,9 @@ int parallel_main(int argc, char *argv[]) {
               readCompressedHypergraph<compressedAsymmetricVertex>(iFile,symmetric,mmap); //asymmetric graph
 #endif
 #if defined(PARTITION)
+            startTime();
             create_partitions(G, partitions_gl);
+            nextTime("Preprocessing time");
 #endif
             Compute(G, P);
             if (G.transposed) G.transpose();
@@ -761,7 +764,9 @@ int parallel_main(int argc, char *argv[]) {
               readHypergraph<symmetricVertex>(iFile,compressed,symmetric,binary,mmap); //symmetric graph
 #endif
 #if defined(PARTITION)
+            startTime();
             create_partitions(G, partitions_gl);
+            nextTime("Preprocessing time");
 #endif
             Compute(G, P);
             for (int r = 0; r < rounds; r++) {
@@ -780,7 +785,9 @@ int parallel_main(int argc, char *argv[]) {
 #endif
 
 #if defined(PARTITION)
+            startTime();
             create_partitions(G, partitions_gl);
+            nextTime("Preprocessing time");
 #endif
 
             Compute(G, P);
