@@ -45,7 +45,8 @@
 #include <set>
 #include<map>
 
-#define D_MAX 16
+#define MAX_CHAIN_LENGTH 16
+#define MAX_DFS_DEPTH 1024
 
 using namespace std;
 
@@ -68,8 +69,6 @@ const flags remove_duplicates = 32;
 const flags no_dense = 64;
 const flags edge_parallel = 128;
 map<uintE, vector<chain *> > partitions_gl;
-
-
 
 void print_chain(chain *c, bool complete = false);
 
@@ -159,13 +158,14 @@ vertexSubsetData<data> edgeMapDensePartitioned(graph<vertex> GA, VS& vertexSubse
     vertex *G = GA.V;
     auto g = get_emdense_nooutput_gen<data>();
 
+    // todo: check if it works with update as well
     for (auto const &partition: partitions) {
             parallel_for (int i = 0; i < partition.second.size(); i++) {
             auto chain = partition.second[i];
             for (auto edge: chain->edges) {
                 uintE src = edge.first, dst = edge.second;
                 if (vertexSubset.isIn(src) & f.cond(dst)) {
-                    f.update(src, dst);
+                    f.updateAtomic(src, dst);
                 }
             }
         }
@@ -566,14 +566,13 @@ template<class vertex>
 bool has_unvisited_edge(graph<vertex> &GA, uintE source, map<pair<uintE, uintE>, bool> &edge_visited);
 
 template<class vertex>
-void generate_chains(graph<vertex> &GA, uintE root, uintE d, map<uintE, bool> &vertex_visited,
-                     map<pair<uintE, uintE>, bool> &edge_visited, chain *&current_chain, vector<chain *> &chains);
+void generate_chains(graph<vertex> &GA, uintE root,
+                     int depth,
+                     map<uintE, bool> &vertex_visited, map<pair<uintE, uintE>, bool> &edge_visited,
+                     chain *&curr_chain, vector<chain *> &chains);
 
 template<class vertex>
 void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitions);
-
-template<class vertex>
-int get_first_unvisited_vertex(graph<vertex> &GA, map<uintE, bool> vertex_visited);
 
 void insert_edge(uintE src, uintE dst, chain *c);
 
@@ -621,34 +620,36 @@ void determine_dependency(chain *&c1, chain *&c2) {
 }
 
 template<class vertex>
-void generate_chains(graph<vertex> &GA,
-                     uintE root, uintE d,
-                     map<uintE, bool> &vertex_visited, map<pair<uintE, uintE>, bool> &edge_visited,
-                     chain *&current_chain, vector<chain *> &chains) {
+void generate_chains(graph<vertex> &GA, uintE root,
+                     int depth,
+                     map<uintE, bool> &vertex_visited, map<pair<uintE, uintE>, bool>& edge_visited,
+                     chain *&curr_chain, vector<chain *> &chains) {
+    if (depth > MAX_DFS_DEPTH) {
+        return;
+    }
+
+    if (curr_chain->edges.size() >= MAX_CHAIN_LENGTH) {
+        chains.push_back(curr_chain);
+        curr_chain = new chain;
+    }
+
     vertex *G = GA.V;
     vertex_visited[root] = true;
-    if (has_unvisited_edge(GA, root, edge_visited) and d < D_MAX) {
-        // TODO: add sorting
-        for (uintE i = 0; i < G[root].getOutDegree(); i++) {
-            uintE neigh = G[root].getOutNeighbor(i);
-            pair<uintE, uintE> edge = make_pair(root, neigh);
-            if (!edge_visited[edge]) {
-                edge_visited[edge] = true;
-                insert_edge(root, neigh, current_chain);
-                if (!vertex_visited[neigh]) {
-                    generate_chains(GA, neigh, d + 1, vertex_visited, edge_visited, current_chain, chains);
-                } else {
-                    chains.push_back(current_chain);
-                    current_chain = new chain;
-                }
-            }
+
+    for (uintE i = 0; i < G[root].getOutDegree(); i++) {
+        uintE neigh = G[root].getOutNeighbor(i);
+        insert_edge(root, neigh, curr_chain);
+        edge_visited[make_pair(root, neigh)] = true;
+        if (!vertex_visited[neigh] ) {
+            generate_chains(GA, neigh,
+                            depth + 1,
+                            vertex_visited, edge_visited,
+                            curr_chain, chains);
         }
-    } else {
-        chains.push_back(current_chain);
-        current_chain = new chain;
-        if (G[root].getOutDegree() != 0) {
-            vertex_visited[root] = false;
-        }
+    }
+    if (find(chains.begin(), chains.end(), curr_chain) == chains.end()) {
+        chains.push_back(curr_chain);
+        curr_chain = new chain;
     }
 }
 
@@ -665,8 +666,6 @@ void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<cha
 
 template<class vertex>
 void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitions) {
-
-    cout << "STEP 1: generating the chains" << endl;
     map<uintE, bool> vertex_visited;
     map<pair<uintE, uintE>, bool> edge_visited;
     vector<chain *> chains;
@@ -676,42 +675,17 @@ void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitio
         generate_chains(GA, (uintE) root, 0, vertex_visited, edge_visited, curr, chains);
     }
 
-    cout << "STEP 2: generating dependency graph" << endl;
-    for (uintE i = 0; i < chains.size(); i++) {
-        auto c1 = chains[i];
-        for (uintE j = i + 1; j < chains.size(); j++) {
-            auto c2 = chains[j];
-            determine_dependency(c1, c2);
-        }
-    }
-
-    cout << "STEP 3: generating the partitions_gl" << endl;
-    map<chain *, bool> chain_visited;
+    int all = 0;
     for (auto chain: chains) {
-        if (!chain_visited[chain]) {
-            partition_chains(chain, 0, chains, chain_visited, partitions);
-        }
+        all += chain->edges.size();
     }
+    cout << "graph edges: " << GA.m << " | chain edges: " << all << " | total chains: " << chains.size() << endl;
 
-    cout << "STEP 4: printing out the partitions_gl" << endl;
-    for (auto const &create_partitions: partitions_gl) {
-        cout << "level " << create_partitions.first << " is: " << endl;
-        for (auto &chain: create_partitions.second) {
-            print_chain(chain, false);
-        }
+    for (auto chain: chains) {
+        partitions[0].push_back(chain);
     }
 }
 
-
-template<class vertex>
-int get_first_unvisited_vertex(graph<vertex> &GA, map<uintE, bool> vertex_visited) {
-    for (int i = 0; i < GA.n; i++) {
-        if (!vertex_visited[i]) {
-            return i;
-        }
-    }
-    return -1;
-}
 
 
 template<class vertex>
@@ -808,6 +782,7 @@ int parallel_main(int argc, char *argv[]) {
 #if defined(PARTITION)
             create_partitions(G, partitions_gl);
 #endif
+
             Compute(G, P);
             if (G.transposed) G.transpose();
             for (int r = 0; r < rounds; r++) {

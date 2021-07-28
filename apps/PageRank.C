@@ -96,7 +96,7 @@ void Compute(graph<vertex>& GA, commandLine P) {
       vertexMap(Frontier,PR_Vertex_Reset(p_curr));
       swap(p_curr,p_next);
   }
-
+//
 //    for (long i = 0; i < n; i++) {
 //        cout << "\tPR[" << i << "]: " << p_next[i] << endl;
 //    }
