@@ -45,7 +45,7 @@
 #include <set>
 #include<map>
 
-#define MAX_CHAIN_LENGTH 16
+#define MAX_CHAIN_LENGTH 32
 #define MAX_DFS_DEPTH 1024
 
 using namespace std;
@@ -158,7 +158,6 @@ vertexSubsetData<data> edgeMapDensePartitioned(graph<vertex> GA, VS& vertexSubse
     vertex *G = GA.V;
     auto g = get_emdense_nooutput_gen<data>();
 
-    // todo: check if it works with update as well
     for (auto const &partition: partitions) {
             parallel_for (int i = 0; i < partition.second.size(); i++) {
             auto chain = partition.second[i];
@@ -674,12 +673,6 @@ void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitio
         generate_chains(GA, (uintE) root, 0, vertex_visited, curr, chains);
     }
 
-    int all = 0;
-    for (auto chain: chains) {
-        all += chain->edges.size();
-    }
-    cout << "graph edges: " << GA.m << " | chain edges: " << all << " | total chains: " << chains.size() << endl;
-
     for (auto chain: chains) {
         partitions[0].push_back(chain);
     }
@@ -795,7 +788,11 @@ int parallel_main(int argc, char *argv[]) {
             for (int r = 0; r < rounds; r++) {
                 startTime();
                 Compute(G, P);
-                nextTime("Running time");
+#if defined(PARTITION)
+                nextTime("Running time with partitions");
+#else
+                nextTime("Running time simple");
+#endif
                 if (G.transposed) G.transpose();
             }
             G.del();
