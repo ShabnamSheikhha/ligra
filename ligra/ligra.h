@@ -45,7 +45,7 @@
 #include <set>
 #include<map>
 
-#define MAX_CHAIN_LENGTH 32
+#define MAX_CHAIN_LENGTH 64
 #define MAX_DFS_DEPTH 1024
 
 using namespace std;
@@ -68,9 +68,41 @@ const flags dense_parallel = 16;
 const flags remove_duplicates = 32;
 const flags no_dense = 64;
 const flags edge_parallel = 128;
-map<uintE, vector<chain *> > partitions_gl;
+
+
+vector<chain *> partitions_gl;
 
 void print_chain(chain *c, bool complete = false);
+
+template<class vertex>
+void Compute(graph<vertex> &, commandLine);
+
+
+template<class vertex>
+void Compute(hypergraph<vertex> &, commandLine);
+
+template<class vertex>
+bool has_unvisited_edge(graph<vertex> &GA, uintE source, map<pair<uintE, uintE>, bool> &edge_visited);
+
+template<class vertex>
+void generate_chains(graph<vertex> &GA, uintE root,
+                     int depth,
+                     map<uintE, bool> &vertex_visited,
+                     chain *&curr_chain, vector<chain *> &chains);
+
+template<class vertex>
+void create_partitions(graph<vertex> &GA, vector<chain *> &partitions);
+
+void insert_edge(uintE src, uintE dst, chain *c);
+
+bool is_head(uintE node, chain *c);
+
+bool is_tail(uintE node, chain *c);
+
+void determine_dependency(chain *&c1, chain *&c2);
+
+void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<chain *, bool> &chain_visited,
+                      map<uintE, vector<chain *> > &partitions);
 
 void print_chain(chain *c, bool complete) {
     cout << "************" << endl;
@@ -95,6 +127,7 @@ void print_chain(chain *c, bool complete) {
 }
 
 inline bool should_output(const flags &fl) { return !(fl & no_output); }
+
 
 template<class data, class vertex, class VS, class F>
 vertexSubsetData<data> edgeMapDense(graph<vertex> GA, VS &vertexSubset, F &f, const flags fl) {
@@ -121,7 +154,6 @@ vertexSubsetData<data> edgeMapDense(graph<vertex> GA, VS &vertexSubset, F &f, co
         return vertexSubsetData<data>(n);
     }
 }
-
 
 template<class data, class vertex, class VS, class F>
 vertexSubsetData<data> edgeMapDenseForward(graph<vertex> GA, VS &vertexSubset, F &f, const flags fl) {
@@ -151,21 +183,19 @@ vertexSubsetData<data> edgeMapDenseForward(graph<vertex> GA, VS &vertexSubset, F
 
 template <class data, class vertex, class VS, class F>
 vertexSubsetData<data> edgeMapDensePartitioned(graph<vertex> GA, VS& vertexSubset, F &f, const flags fl,
-                                               const map<uintE, vector<chain *> >& partitions) {
+                                               const vector<chain *> & partitions) {
 
     using D = tuple<bool, data>;
     long n = GA.n;
     vertex *G = GA.V;
     auto g = get_emdense_nooutput_gen<data>();
 
-    for (auto const &partition: partitions) {
-            parallel_for (int i = 0; i < partition.second.size(); i++) {
-            auto chain = partition.second[i];
-            for (auto edge: chain->edges) {
-                uintE src = edge.first, dst = edge.second;
-                if (vertexSubset.isIn(src) & f.cond(dst)) {
-                    f.updateAtomic(src, dst);
-                }
+    parallel_for (int i = 0; i < partitions.size(); i++) {
+        auto chain = partitions[i];
+        for (auto edge: chain->edges) {
+            uintE src = edge.first, dst = edge.second;
+            if (vertexSubset.isIn(src) & f.cond(dst)) {
+                f.updateAtomic(src, dst);
             }
         }
     }
@@ -302,7 +332,7 @@ vertexSubsetData<data> edgeMapSparse_no_filter(graph<vertex> &GA,
 template<class data, class vertex, class VS, class F>
 vertexSubsetData<data> edgeMapData(graph<vertex> &GA, VS &vs, F f,
                                    intT threshold = -1, const flags &fl = 0,
-                                   const map<uintE, vector<chain *> >& partitions={}) {
+                                   const vector<chain *> & partitions={}) {
     long numVertices = GA.n, numEdges = GA.m, m = vs.numNonzeros();
     if (threshold == -1) threshold = numEdges / 20; //default threshold
     vertex *G = GA.V;
@@ -358,9 +388,11 @@ vertexSubsetData<data> edgeMapData(graph<vertex> &GA, VS &vs, F f,
 template<class vertex, class VS, class F>
 vertexSubset edgeMap(graph<vertex> &GA, VS &vs, F f,
                      intT threshold = -1, const flags &fl = 0,
-                     const map<uintE, vector<chain *> >& partitions={}) {
+                     const vector<chain *> & partitions={}) {
     return edgeMapData<pbbs::empty>(GA, vs, f, threshold, fl, partitions);
 }
+
+
 
 // Packs out the adjacency lists of all vertex in vs. A neighbor, ngh, is kept
 // in the new adjacency list if p(ngh) is true.
@@ -418,8 +450,6 @@ vertexSubsetData<uintE> packEdges(graph<vertex> &GA, vertexSubset &vs, P &p, con
         return vertexSubsetData<uintE>(n);
     }
 }
-
-
 
 template<class vertex, class P>
 vertexSubsetData<uintE> edgeMapFilter(graph<vertex> &GA, vertexSubset &vs, P &p, const flags &fl = 0) {
@@ -508,6 +538,7 @@ vertexSubset vertexFilter(vertexSubset V, F filter) {
     return vertexSubset(n, d_out);
 }
 
+
 template<class F>
 vertexSubset vertexFilter2(vertexSubset V, F filter) {
     long n = V.numRows(), m = V.numNonzeros();
@@ -529,7 +560,6 @@ vertexSubset vertexFilter2(vertexSubset V, F filter) {
     free(bits);
     return vertexSubset(n, out.size(), out.s);
 }
-
 
 template<class data, class F>
 vertexSubset vertexFilter2(vertexSubsetData<data> V, F filter) {
@@ -554,36 +584,6 @@ vertexSubset vertexFilter2(vertexSubsetData<data> V, F filter) {
 //cond function that always returns true
 inline bool cond_true(intT d) { return 1; }
 
-template<class vertex>
-void Compute(graph<vertex> &, commandLine);
-
-
-template<class vertex>
-void Compute(hypergraph<vertex> &, commandLine);
-
-template<class vertex>
-bool has_unvisited_edge(graph<vertex> &GA, uintE source, map<pair<uintE, uintE>, bool> &edge_visited);
-
-template<class vertex>
-void generate_chains(graph<vertex> &GA, uintE root,
-                     int depth,
-                     map<uintE, bool> &vertex_visited,
-                     chain *&curr_chain, vector<chain *> &chains);
-
-template<class vertex>
-void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitions);
-
-void insert_edge(uintE src, uintE dst, chain *c);
-
-bool is_head(uintE node, chain *c);
-
-bool is_tail(uintE node, chain *c);
-
-void determine_dependency(chain *&c1, chain *&c2);
-
-void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<chain *, bool> &chain_visited,
-                      map<uintE, vector<chain *> > &partitions);
-
 bool is_head(uintE node, chain *c) {
     return !c->edges.empty() && node == c->edges[0].first;
 }
@@ -594,10 +594,11 @@ bool is_tail(uintE node, chain *c) {
 
 void insert_edge(uintE src, uintE dst, chain *c) {
     c->edges.emplace_back(src, dst);
-    c->nodes.insert(src);
-    c->nodes.insert(dst);
+//    c->nodes.insert(src);
+//    c->nodes.insert(dst);
 }
 
+/** for old partitioning scheme **/
 void determine_dependency(chain *&c1, chain *&c2) {
     std::vector<uintE> common_data;
     set_intersection(c1->nodes.begin(), c1->nodes.end(), c2->nodes.begin(), c2->nodes.end(),
@@ -645,11 +646,9 @@ void generate_chains(graph<vertex> &GA, uintE root,
                             curr_chain, chains);
         }
     }
-//    if (find(chains.begin(), chains.end(), curr_chain) == chains.end()) {
-//        chains.push_back(curr_chain);
-//        curr_chain = new chain;
-//    }
 }
+
+/** for old partitioning scheme **/
 
 void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<chain *, bool> &chain_visited,
                       map<uintE, vector<chain *> > &partitions) {
@@ -663,23 +662,18 @@ void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<cha
 }
 
 template<class vertex>
-void create_partitions(graph<vertex> &GA, map<uintE, vector<chain *> > &partitions) {
+void create_partitions(graph<vertex> &GA, vector<chain *> &partitions) {
     map<uintE, bool> vertex_visited;
-    vector<chain *> chains;
     for (uintE root = 0; root < GA.n; root++) {
         if (vertex_visited[root]) continue;
         auto *curr = new chain;
-        chains.push_back(curr);
-        generate_chains(GA, (uintE) root, 0, vertex_visited, curr, chains);
-    }
-
-    for (auto chain: chains) {
-        partitions[0].push_back(chain);
+        partitions.push_back(curr);
+        generate_chains(GA, (uintE) root, 0, vertex_visited, curr, partitions);
     }
 }
 
 
-
+/** for old partitioning scheme **/
 template<class vertex>
 bool has_unvisited_edge(graph<vertex> &GA, uintE source, map<pair<uintE, uintE>, bool> &edge_visited) {
     vertex *G = GA.V;
@@ -721,7 +715,11 @@ int parallel_main(int argc, char *argv[]) {
             for (int r = 0; r < rounds; r++) {
                 startTime();
                 Compute(G, P);
-                nextTime("Running time");
+#if defined(PARTITION)
+                nextTime("Running time with partitions");
+#else
+                nextTime("Running time simple");
+#endif
             }
             G.del();
         } else {
@@ -742,7 +740,11 @@ int parallel_main(int argc, char *argv[]) {
             for (int r = 0; r < rounds; r++) {
                 startTime();
                 Compute(G, P);
-                nextTime("Running time");
+#if defined(PARTITION)
+                nextTime("Running time with partitions");
+#else
+                nextTime("Running time simple");
+#endif
                 if (G.transposed) G.transpose();
             }
             G.del();
@@ -765,7 +767,11 @@ int parallel_main(int argc, char *argv[]) {
             for (int r = 0; r < rounds; r++) {
                 startTime();
                 Compute(G, P);
-                nextTime("Running time");
+#if defined(PARTITION)
+                nextTime("Running time with partitions");
+#else
+                nextTime("Running time simple");
+#endif
             }
             G.del();
         } else {
