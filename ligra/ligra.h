@@ -59,6 +59,49 @@ struct chain {
     vector<chain *> successors;
 };
 
+class DSU {
+public:
+    uintE *parent;
+    uintE *rank;
+    uintE n_nodes;
+
+    explicit DSU (uintE n) {
+        n_nodes = n;
+        parent = static_cast<uintE *>(malloc(n_nodes * sizeof(uintE)));
+        rank = static_cast<uintE *>(malloc(n_nodes * sizeof(uintE)));
+        initialize();
+    }
+
+    void initialize() {
+        for (uintE v = 0; v < n_nodes; v++) {
+            make_set(v);
+        }
+    }
+
+    void make_set(uintE v) {
+        parent[v] = v;
+        rank[v] = 0;
+    }
+
+    uintE find_set(uintE v) {
+        if (v == parent[v])
+            return v;
+        return parent[v] = find_set(parent[v]);
+    }
+
+    void union_sets(uintE a, uintE b) {
+        a = find_set(a);
+        b = find_set(b);
+        if (a != b) {
+            if (rank[a] < rank[b])
+                swap(a, b);
+            parent[b] = a;
+            if (rank[a] == rank[b])
+                rank[a]++;
+        }
+    }
+};
+
 typedef uint32_t flags;
 const flags no_output = 1;
 const flags pack_edges = 2;
@@ -89,6 +132,9 @@ void generate_chains(graph<vertex> &GA, uintE root,
                      int depth,
                      map<uintE, bool> &vertex_visited,
                      chain *&curr_chain, vector<chain *> &chains);
+
+template<class vertex>
+void create_connected_components(graph<vertex> &GA);
 
 template<class vertex>
 void create_partitions(graph<vertex> &GA, vector<chain *> &partitions);
@@ -648,6 +694,25 @@ void generate_chains(graph<vertex> &GA, uintE root,
     }
 }
 
+template<class vertex>
+void create_connected_components(graph<vertex> &GA) {
+    long n = GA.n;
+    vertex *G = GA.V;
+
+    DSU subgraphs(n);
+    subgraphs.initialize();
+    for (uintE v = 0; v < GA.n; v++) {
+        uintE d = G[v].getOutDegree();
+        for (uintE j=0; j<d; j++) {
+            uintE ngh = G[v].getOutNeighbor(j);
+            subgraphs.union_sets(v, ngh);
+        }
+    }
+
+    for (uintE v = 0; v < GA.n; v++) {
+        cout << v << " is in cc " << subgraphs.find_set(v) << endl;
+    }
+}
 /** for old partitioning scheme **/
 
 void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<chain *, bool> &chain_visited,
@@ -785,6 +850,7 @@ int parallel_main(int argc, char *argv[]) {
 
 #if defined(PARTITION)
             startTime();
+            create_connected_components(G);
             create_partitions(G, partitions_gl);
             nextTime("Preprocessing time");
 #endif
