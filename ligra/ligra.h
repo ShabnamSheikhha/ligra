@@ -138,8 +138,16 @@ public:
         }
     }
 
-    bool is_visited(uintE v) {
+    uintE get_scc(uintE v) {
+        return SCC[v];
+    }
+
+    bool is_visited(uintE v) const {
         return index[v] != -1;
+    }
+
+    bool same_scc(uintE v, uintE u) {
+        return SCC[v] == SCC[u];
     }
 
 };
@@ -183,6 +191,22 @@ public:
                 rank[a]++;
         }
     }
+
+    bool same_cc(uintE v1, uintE v2) {
+        return find_set(v1) == find_set(v2);
+    }
+
+    template<class vertex>
+    void find_cc(graph<vertex> &GA)  {
+        vertex *G = GA.v;
+        for (uintE v = 0; v < n_nodes; v++) {
+            uintE d = G[v].getOutDegree();
+            for (uintE j=0; j<d; j++) {
+                uintE ngh = G[v].getOutNeighbor(j);
+                union_sets(v, ngh);
+            }
+        }
+    }
 };
 
 typedef uint32_t flags;
@@ -198,8 +222,9 @@ const flags edge_parallel = 128;
 
 vector<chain *> chains_gl;
 map<uintE, vector<chain *> > partitions_gl;
-DSU subgraphs;
-Tarjan SCCs;
+vector<pair<uintE, uintE> > cross_partition_edges;
+DSU CCs{};
+Tarjan SCCs{};
 
 void print_chain(chain *c, bool complete = false);
 
@@ -240,12 +265,6 @@ void determine_dependency(chain *&c1, chain *&c2);
 void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<chain *, bool> &chain_visited,
                       map<uintE, vector<chain *> > &partitions);
 
-bool same_subgraph(uintE v1, uintE v2);
-
-bool same_subgraph(uintE v1, uintE v2) {
-    return subgraphs.find_set(v1) == subgraphs.find_set(v2);
-}
-
 void print_chain(chain *c, bool complete) {
     cout << "************" << endl;
 
@@ -259,27 +278,30 @@ void print_chain(chain *c, bool complete) {
     }
     cout << endl;
 
+    if (!complete) {
+        cout << "************" << endl;
+        return;
+    }
+
     cout << "subgraph:" << endl;
     for (auto edge: c->edges) {
         cout << "<";
-        cout << subgraphs.find_set(edge.first);
+        cout << CCs.find_set(edge.first);
         cout << ", ";
-        cout << subgraphs.find_set(edge.second);
+        cout << CCs.find_set(edge.second);
         cout << "> ";
     }
     cout << endl;
 
-    if (complete) {
-        cout << "successors:" << endl;
-        for (auto succ: c->successors) {
-            for (auto edge: succ->edges) {
-                cout << "<" << edge.first << ", " << edge.second << "> ";
-            }
-            cout << endl;
+    cout << "successors:" << endl;
+    for (auto succ: c->successors) {
+        for (auto edge: succ->edges) {
+            cout << "<" << edge.first << ", " << edge.second << "> ";
         }
-
-        cout << "************" << endl;
+        cout << endl;
     }
+
+    cout << "************" << endl;
 }
 
 inline bool should_output(const flags &fl) { return !(fl & no_output); }
@@ -794,7 +816,10 @@ void generate_chains(graph<vertex> &GA, uintE root,
 
     for (uintE i = 0; i < G[root].getOutDegree(); i++) {
         uintE neigh = G[root].getOutNeighbor(i);
-        //if (!same_subgraph(root, neigh)) continue;
+        if (!SCCs.same_scc(root, neigh)) {
+            cross_partition_edges.push_back(make_pair(root, neigh));
+            continue;
+        }
         insert_edge(root, neigh, curr_chain);
         if (!vertex_visited[neigh]) {
             generate_chains(GA, neigh,
@@ -808,30 +833,13 @@ void generate_chains(graph<vertex> &GA, uintE root,
 template<class vertex>
 void create_connected_components(graph<vertex> &GA) {
     long n = GA.n;
-    vertex *G = GA.V;
-
-    subgraphs.initialize(n);
-    for (uintE v = 0; v < GA.n; v++) {
-        uintE d = G[v].getOutDegree();
-        for (uintE j=0; j<d; j++) {
-            uintE ngh = G[v].getOutNeighbor(j);
-            subgraphs.union_sets(v, ngh);
-        }
-    }
-
-    set<uintE> unique_components;
-    for (uintE v = 0; v < GA.n; v++) {
-        unique_components.insert(subgraphs.find_set(v));
-    }
-    cout << "number of connected components: " << unique_components.size() << endl;
+    CCs.initialize(n);
+    CCs.find_cc(GA);
 }
 
 template<class vertex>
 void create_strongly_connected_components(graph<vertex> &GA) {
-    long n = GA.n;
-    vertex *G = GA.V;
-
-    SCCs.initialize(n);
+    SCCs.initialize(GA.n);
     SCCs.find_scc(GA);
     SCCs.print();
 }
@@ -850,43 +858,58 @@ void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<cha
 
 template<class vertex>
 void create_partitions(graph<vertex> &GA, vector<chain *> &chains) {
+    /* make the chains */
     map<uintE, bool> vertex_visited;
     for (uintE root = 0; root < GA.n; root++) {
         if (vertex_visited[root]) continue;
         auto *curr = new chain;
         chains.push_back(curr);
         generate_chains(GA, (uintE) root, 0, vertex_visited, curr, chains);
+        if (curr->edges.empty()) {
+            chains.pop_back();
+        }
     }
 
-//    for (auto chain: chains) {
-//        uintE head = chain->edges[0].first;
-//        uintE set = subgraphs.find_set(head);
-//        if (partitions_gl[set].empty()) {
-//            partitions_gl[set] = {};
-//        }
-//        partitions_gl[set].emplace_back(chain);
-////        partitions_gl[subgraphs.find_set(chain->edges[0].first)].push_back(chain);
-//    }
+    cout << "assigning the partitions" << endl;
+    for (auto chain: chains) {
+        uintE head = chain->edges[0].first;
+        uintE set = SCCs.get_scc(head);
+        cout << "set is " << set << endl;
+        if (partitions_gl[set].empty()) {
+            partitions_gl[set] = {};
+        }
+        partitions_gl[set].emplace_back(chain);
+    }
 
-//    /** for testing purposes **/
-//    int num_edges = 0;
-//    bool you_fucked_up = false;
-//    for (auto chain: chains) {
-//        num_edges += chain->edges.size();
-//        for (auto edge: chain->edges) {
-//            if(!same_subgraph(edge.first, edge.second)) {
-//                you_fucked_up = true;
-//            }
-//        }
-//    }
-//    cout << "edge count in chains: " << num_edges;
-//    cout << ", ";
-//    cout << "total edge count: " << GA.m << endl;
-//    if (you_fucked_up) {
-//        cout << "WHAT DID YOU DO" << endl;
-//    } else {
-//        cout << "have a cookie :)" << endl;
-//    }
+    /** for testing purposes **/
+/*
+    cout << "** check if edges in a chain are from the same SCC" << endl;
+    int num_edges = 0;
+    bool you_fucked_up = false;
+    for (auto chain: chains) {
+        num_edges += chain->edges.size();
+        for (auto edge: chain->edges) {
+            if(!SCCs.same_scc(edge.first, edge.second)) {
+                you_fucked_up = true;
+            }
+        }
+    }
+    if (you_fucked_up) {
+        cout << "WHAT DID YOU DO" << endl;
+    } else {
+        cout << "have a cookie :)" << endl;
+    }
+
+    cout << "** checking if edge count matches" << endl;
+    cout << "CHAINS: " << num_edges;
+    cout << ", ";
+    cout << "CROSS-PARTITIONS: " << cross_partition_edges.size() << endl;
+    cout << "TOTAL: " << GA.m;
+    cout << "=";
+    cout << num_edges + cross_partition_edges.size();
+    cout << "?" << endl;
+*/
+
 }
 
 
