@@ -22,7 +22,7 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-//include the code for the desired compression scheme
+//include the code for the desired compression scheme_gl
 #ifndef PD 
 #ifdef BYTE
 #include "byte.h"

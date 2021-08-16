@@ -209,6 +209,15 @@ public:
     }
 };
 
+class Partitioning {
+public:
+    vector<chain *> chains;
+    map<uintE, vector<chain *> > set_to_chains;
+    vector<pair<uintE, uintE> > cross_partition_edges;
+
+    Partitioning() {}
+};
+
 typedef uint32_t flags;
 const flags no_output = 1;
 const flags pack_edges = 2;
@@ -220,11 +229,9 @@ const flags no_dense = 64;
 const flags edge_parallel = 128;
 
 
-vector<chain *> chains_gl;
-map<uintE, vector<chain *> > partitions_gl;
-vector<pair<uintE, uintE> > cross_partition_edges;
-DSU CCs{};
-Tarjan SCCs{};
+DSU CCs_gl{};
+Tarjan SCCs_gl{};
+Partitioning scheme_gl{};
 
 void print_chain(chain *c, bool complete = false);
 
@@ -252,7 +259,7 @@ template<class vertex>
 void create_strongly_connected_components(graph<vertex> &GA);
 
 template<class vertex>
-void create_partitions(graph<vertex> &GA, vector<chain *> &chains);
+void create_partitions(graph<vertex> &GA);
 
 void insert_edge(uintE src, uintE dst, chain *c);
 
@@ -286,9 +293,9 @@ void print_chain(chain *c, bool complete) {
     cout << "subgraph:" << endl;
     for (auto edge: c->edges) {
         cout << "<";
-        cout << CCs.find_set(edge.first);
+        cout << CCs_gl.find_set(edge.first);
         cout << ", ";
-        cout << CCs.find_set(edge.second);
+        cout << CCs_gl.find_set(edge.second);
         cout << "> ";
     }
     cout << endl;
@@ -361,20 +368,29 @@ vertexSubsetData<data> edgeMapDenseForward(graph<vertex> GA, VS &vertexSubset, F
 
 template <class data, class vertex, class VS, class F>
 vertexSubsetData<data> edgeMapDensePartitioned(graph<vertex> GA, VS& vertexSubset, F &f, const flags fl,
-                                               const vector<chain *> & partitions) {
+                                               Partitioning scheme) {
 
     using D = tuple<bool, data>;
     long n = GA.n;
     vertex *G = GA.V;
     auto g = get_emdense_nooutput_gen<data>();
 
-    parallel_for (int i = 0; i < partitions.size(); i++) {
-        auto chain = partitions[i];
-        for (auto edge: chain->edges) {
-            uintE src = edge.first, dst = edge.second;
-            if (vertexSubset.isIn(src) & f.cond(dst)) {
-                f.updateAtomic(src, dst);
+    for (auto level: scheme.set_to_chains) {
+        parallel_for (uintE c = 0; c < level.second.size(); c++) {
+            auto curr_chain = level.second[c];
+            for (auto edge: curr_chain->edges) {
+                uintE src = edge.first, dst = edge.second;
+                if (vertexSubset.isIn(src) && f.cond(dst)) {
+                    f.update(src, dst);
+                }
             }
+        }
+    }
+
+    for (auto edge: scheme.cross_partition_edges) {
+        uintE src = edge.first, dst = edge.second;
+        if (vertexSubset.isIn(src) && f.cond(dst)) {
+            f.update(src, dst);
         }
     }
 
@@ -510,7 +526,7 @@ vertexSubsetData<data> edgeMapSparse_no_filter(graph<vertex> &GA,
 template<class data, class vertex, class VS, class F>
 vertexSubsetData<data> edgeMapData(graph<vertex> &GA, VS &vs, F f,
                                    intT threshold = -1, const flags &fl = 0,
-                                   const vector<chain *> & partitions={}) {
+                                   Partitioning scheme={}) {
     long numVertices = GA.n, numEdges = GA.m, m = vs.numNonzeros();
     if (threshold == -1) threshold = numEdges / 20; //default threshold
     vertex *G = GA.V;
@@ -544,10 +560,10 @@ vertexSubsetData<data> edgeMapData(graph<vertex> &GA, VS &vs, F f,
         if (fl & dense_forward) {
             return edgeMapDenseForward<data, vertex, VS, F>(GA, vs, f, fl);
         } else {
-            if (partitions.empty()) {
+            if (scheme.chains.empty()) {
                 return edgeMapDense<data, vertex, VS, F>(GA, vs, f, fl);
             } else {
-                return edgeMapDensePartitioned<data, vertex, VS, F>(GA, vs, f, fl, partitions);
+                return edgeMapDensePartitioned<data, vertex, VS, F>(GA, vs, f, fl, scheme);
             }
         }
     } else {
@@ -566,8 +582,8 @@ vertexSubsetData<data> edgeMapData(graph<vertex> &GA, VS &vs, F f,
 template<class vertex, class VS, class F>
 vertexSubset edgeMap(graph<vertex> &GA, VS &vs, F f,
                      intT threshold = -1, const flags &fl = 0,
-                     const vector<chain *> & partitions={}) {
-    return edgeMapData<pbbs::empty>(GA, vs, f, threshold, fl, partitions);
+                     Partitioning scheme={}) {
+    return edgeMapData<pbbs::empty>(GA, vs, f, threshold, fl, scheme);
 }
 
 
@@ -776,7 +792,7 @@ void insert_edge(uintE src, uintE dst, chain *c) {
 //    c->nodes.insert(dst);
 }
 
-/** for old partitioning scheme **/
+/** for old partitioning scheme_gl **/
 void determine_dependency(chain *&c1, chain *&c2) {
     std::vector<uintE> common_data;
     set_intersection(c1->nodes.begin(), c1->nodes.end(), c2->nodes.begin(), c2->nodes.end(),
@@ -816,8 +832,8 @@ void generate_chains(graph<vertex> &GA, uintE root,
 
     for (uintE i = 0; i < G[root].getOutDegree(); i++) {
         uintE neigh = G[root].getOutNeighbor(i);
-        if (!SCCs.same_scc(root, neigh)) {
-            cross_partition_edges.push_back(make_pair(root, neigh));
+        if (!SCCs_gl.same_scc(root, neigh)) {
+            scheme_gl.cross_partition_edges.push_back(make_pair(root, neigh));
             continue;
         }
         insert_edge(root, neigh, curr_chain);
@@ -833,17 +849,17 @@ void generate_chains(graph<vertex> &GA, uintE root,
 template<class vertex>
 void create_connected_components(graph<vertex> &GA) {
     long n = GA.n;
-    CCs.initialize(n);
-    CCs.find_cc(GA);
+    CCs_gl.initialize(n);
+    CCs_gl.find_cc(GA);
 }
 
 template<class vertex>
 void create_strongly_connected_components(graph<vertex> &GA) {
-    SCCs.initialize(GA.n);
-    SCCs.find_scc(GA);
-    SCCs.print();
+    SCCs_gl.initialize(GA.n);
+    SCCs_gl.find_scc(GA);
+    //SCCs_gl.print();
 }
-/** for old partitioning scheme **/
+/** for old partitioning scheme_gl **/
 
 void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<chain *, bool> &chain_visited,
                       map<uintE, vector<chain *> > &partitions) {
@@ -857,28 +873,28 @@ void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<cha
 }
 
 template<class vertex>
-void create_partitions(graph<vertex> &GA, vector<chain *> &chains) {
+void create_partitions(graph<vertex> &GA) {
     /* make the chains */
     map<uintE, bool> vertex_visited;
     for (uintE root = 0; root < GA.n; root++) {
         if (vertex_visited[root]) continue;
         auto *curr = new chain;
-        chains.push_back(curr);
-        generate_chains(GA, (uintE) root, 0, vertex_visited, curr, chains);
+        scheme_gl.chains.push_back(curr);
+        generate_chains(GA, (uintE) root, 0, vertex_visited, curr, scheme_gl.chains);
         if (curr->edges.empty()) {
-            chains.pop_back();
+            scheme_gl.chains.pop_back();
         }
     }
 
-    cout << "assigning the partitions" << endl;
-    for (auto chain: chains) {
+    //cout << "assigning the partitions" << endl;
+    for (auto chain: scheme_gl.chains) {
         uintE head = chain->edges[0].first;
-        uintE set = SCCs.get_scc(head);
-        cout << "set is " << set << endl;
-        if (partitions_gl[set].empty()) {
-            partitions_gl[set] = {};
+        uintE set = SCCs_gl.get_scc(head);
+        //cout << "set is " << set << endl;
+        if (scheme_gl.set_to_chains[set].empty()) {
+            scheme_gl.set_to_chains[set] = {};
         }
-        partitions_gl[set].emplace_back(chain);
+        scheme_gl.set_to_chains[set].emplace_back(chain);
     }
 
     /** for testing purposes **/
@@ -886,10 +902,10 @@ void create_partitions(graph<vertex> &GA, vector<chain *> &chains) {
     cout << "** check if edges in a chain are from the same SCC" << endl;
     int num_edges = 0;
     bool you_fucked_up = false;
-    for (auto chain: chains) {
+    for (auto chain: scheme_gl.chains) {
         num_edges += chain->edges.size();
         for (auto edge: chain->edges) {
-            if(!SCCs.same_scc(edge.first, edge.second)) {
+            if(!SCCs_gl.same_scc(edge.first, edge.second)) {
                 you_fucked_up = true;
             }
         }
@@ -903,17 +919,17 @@ void create_partitions(graph<vertex> &GA, vector<chain *> &chains) {
     cout << "** checking if edge count matches" << endl;
     cout << "CHAINS: " << num_edges;
     cout << ", ";
-    cout << "CROSS-PARTITIONS: " << cross_partition_edges.size() << endl;
+    cout << "CROSS-PARTITIONS: " << scheme_gl.cross_partition_edges.size() << endl;
     cout << "TOTAL: " << GA.m;
     cout << "=";
-    cout << num_edges + cross_partition_edges.size();
+    cout << num_edges + scheme_gl.cross_partition_edges.size();
     cout << "?" << endl;
 */
 
 }
 
 
-/** for old partitioning scheme **/
+/** for old partitioning scheme_gl **/
 template<class vertex>
 bool has_unvisited_edge(graph<vertex> &GA, uintE source, map<pair<uintE, uintE>, bool> &edge_visited) {
     vertex *G = GA.V;
@@ -948,7 +964,7 @@ int parallel_main(int argc, char *argv[]) {
 #endif
 #if defined(PARTITION)
             startTime();
-            create_partitions(G, chains_gl);
+            create_partitions(G);
             nextTime("Preprocessing time");
 #endif
             Compute(G, P);
@@ -972,7 +988,7 @@ int parallel_main(int argc, char *argv[]) {
 #endif
 #if defined(PARTITION)
             startTime();
-            create_partitions(G, chains_gl);
+            create_partitions(G);
             nextTime("Preprocessing time");
 #endif
             Compute(G, P);
@@ -1000,7 +1016,7 @@ int parallel_main(int argc, char *argv[]) {
 #endif
 #if defined(PARTITION)
             startTime();
-            create_partitions(G, chains_gl);
+            create_partitions(G);
             nextTime("Preprocessing time");
 #endif
             Compute(G, P);
@@ -1026,8 +1042,7 @@ int parallel_main(int argc, char *argv[]) {
 #if defined(PARTITION)
             startTime();
             create_strongly_connected_components(G);
-            create_partitions(G, chains_gl);
-            exit(0);
+            create_partitions(G);
             nextTime("Preprocessing time");
 #endif
 
