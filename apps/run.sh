@@ -1,5 +1,5 @@
 EXE_DIR=/home/shabsheikhha/Documents/BSC/ligra/apps
-INPUT_DIR=/home/shabsheikhha/Documents/BSC/matrices/test
+INPUT_DIR=/home/shabsheikhha/Documents/BSC/matrices
 LOG_DIR=/home/shabsheikhha/Documents/BSC/ligra/apps/logs
 
 MODE=$1

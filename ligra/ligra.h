@@ -212,7 +212,8 @@ public:
 class Partitioning {
 public:
     vector<chain *> chains;
-    map<uintE, vector<chain *> > set_to_chains;
+    map<uintE, vector<chain *> > set_to_chains_util;
+    vector<vector<chain *> > v_chains;
     vector<pair<uintE, uintE> > cross_partition_edges;
 
     Partitioning() {}
@@ -375,10 +376,10 @@ vertexSubsetData<data> edgeMapDensePartitioned(graph<vertex> GA, VS& vertexSubse
     vertex *G = GA.V;
     auto g = get_emdense_nooutput_gen<data>();
 
-    for (auto level: scheme.set_to_chains) {
-        parallel_for (uintE c = 0; c < level.second.size(); c++) {
-            auto curr_chain = level.second[c];
-            for (auto edge: curr_chain->edges) {
+    parallel_for (uintE level = 0; level < scheme.v_chains.size(); level++) {
+        auto chains = scheme.v_chains[level];
+        for (auto chain: chains) {
+            for (auto edge: chain->edges){
                 uintE src = edge.first, dst = edge.second;
                 if (vertexSubset.isIn(src) && f.cond(dst)) {
                     f.update(src, dst);
@@ -891,12 +892,23 @@ void create_partitions(graph<vertex> &GA) {
         uintE head = chain->edges[0].first;
         uintE set = SCCs_gl.get_scc(head);
         //cout << "set is " << set << endl;
-        if (scheme_gl.set_to_chains[set].empty()) {
-            scheme_gl.set_to_chains[set] = {};
+        if (scheme_gl.set_to_chains_util[set].empty()) {
+            scheme_gl.set_to_chains_util[set] = {};
         }
-        scheme_gl.set_to_chains[set].emplace_back(chain);
+        scheme_gl.set_to_chains_util[set].emplace_back(chain);
     }
 
+
+    for (const auto& set: scheme_gl.set_to_chains_util) {
+        vector<chain *> tmp;
+        for (auto chain: set.second) {
+            tmp.push_back(chain);
+        }
+        scheme_gl.v_chains.push_back(tmp);
+    }
+
+//    cout << "number of sets " << scheme_gl.set_to_chains_util.size() << endl;
+//    cout << "number of chains " << scheme_gl.chains.size() << endl;
     /** for testing purposes **/
 /*
     cout << "** check if edges in a chain are from the same SCC" << endl;
