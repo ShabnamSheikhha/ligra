@@ -93,7 +93,7 @@ void Compute(graph<vertex> &GA, commandLine P) {
 
     long iter = 0;
     while (iter++ < maxIters) {
-        edgeMap(GA, Frontier, PR_F<vertex>(p_curr, p_next, GA.V), 0, no_output, partitions_gl);
+        edgeMap(GA, Frontier, PR_F<vertex>(p_curr, p_next, GA.V), 0, no_output, chains_gl);
         vertexMap(Frontier, PR_Vertex_F(p_curr, p_next, damping, n));
 
         {
@@ -107,6 +107,10 @@ void Compute(graph<vertex> &GA, commandLine P) {
         vertexMap(Frontier, PR_Vertex_Reset(p_curr));
         swap(p_curr, p_next);
     }
+//
+//    for (long i = 0; i < n; i++) {
+//        cout << "PR[" << i << "] = " << p_next[i] << endl;
+//    }
 
     //compute L1-norm between p_curr and p_next
     Frontier.del();

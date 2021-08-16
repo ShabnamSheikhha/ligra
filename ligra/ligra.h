@@ -44,6 +44,7 @@
 #include <vector>
 #include <set>
 #include<map>
+#include<stack>
 
 #define MAX_CHAIN_LENGTH 64
 #define MAX_DFS_DEPTH 1024
@@ -59,26 +60,108 @@ struct chain {
     vector<chain *> successors;
 };
 
+class Tarjan {
+public:
+    uintE n_nodes;
+    uintE *lowlink;
+    uintE *index;
+    uintE *SCC;
+    stack<uintE> *st;
+    bool *is_stack_member;
+    int time;
+
+    Tarjan() {}
+
+    void print() {
+        for (uintE v = 0; v < n_nodes; v++) {
+            cout << "SCC[" << v << "]: " << SCC[v] << endl;
+        }
+    }
+
+    void initialize(uintE n) {
+        time = 0;
+        n_nodes = n;
+        lowlink = static_cast<uintE *>(malloc(n_nodes * sizeof(uintE)));
+        index = static_cast<uintE *>(malloc(n_nodes * sizeof(uintE)));
+        SCC = static_cast<uintE *>(malloc(n_nodes * sizeof(uintE)));
+        is_stack_member = static_cast<bool *>(malloc(n_nodes * sizeof(bool)));
+        st = new stack<uintE>();
+        for (uintE i = 0; i < n_nodes; i++) {
+            index[i] = -1;
+            SCC[i] = -1;
+            lowlink[i] = -1;
+            is_stack_member[i] = false;
+        }
+    }
+
+    // TODO: check this
+    template<class vertex>
+    void find_scc_util(uintE root, graph<vertex> &GA) {
+        index[root] = lowlink[root] = ++time;
+        st->push(root);
+        is_stack_member[root] = true;
+
+        vertex *G = GA.V;
+
+        for (uintE i = 0; i < G[root].getOutDegree(); i++) {
+            uintE neigh = G[root].getOutNeighbor(i);
+            if (index[neigh] == -1) {
+                find_scc_util(neigh, GA);
+                lowlink[root] = min(lowlink[root], lowlink[neigh]);
+            } else if (is_stack_member[neigh]) {
+                lowlink[root] = min(lowlink[root], index[neigh]);
+            }
+        }
+
+        int tmp = 0; // To store stack extracted vertices
+        if (lowlink[root] == index[root])
+        {
+            while (st->top() != root)
+            {
+                tmp = (int) st->top();
+                is_stack_member[tmp] = false;
+                SCC[tmp] = root;
+                st->pop();
+            }
+            tmp = (int) st->top();
+            is_stack_member[tmp] = false;
+            SCC[tmp] = root;
+            st->pop();
+        }
+    }
+
+    template<class vertex>
+    void find_scc(graph<vertex> &GA) {
+        for (uintE v = 0; v < GA.n; v++) {
+            if (is_visited(v)) continue;
+            find_scc_util(v, GA);
+        }
+    }
+
+    bool is_visited(uintE v) {
+        return index[v] != -1;
+    }
+
+};
+
 class DSU {
 public:
     uintE *parent;
     uintE *rank;
     uintE n_nodes;
 
-    explicit DSU (uintE n) {
+    DSU() {}
+
+    void initialize(uintE n) {
         n_nodes = n;
         parent = static_cast<uintE *>(malloc(n_nodes * sizeof(uintE)));
         rank = static_cast<uintE *>(malloc(n_nodes * sizeof(uintE)));
-        initialize();
-    }
-
-    void initialize() {
         for (uintE v = 0; v < n_nodes; v++) {
             make_set(v);
         }
     }
 
-    void make_set(uintE v) {
+    void make_set(uintE v) const {
         parent[v] = v;
         rank[v] = 0;
     }
@@ -113,7 +196,10 @@ const flags no_dense = 64;
 const flags edge_parallel = 128;
 
 
-vector<chain *> partitions_gl;
+vector<chain *> chains_gl;
+map<uintE, vector<chain *> > partitions_gl;
+DSU subgraphs;
+Tarjan SCCs;
 
 void print_chain(chain *c, bool complete = false);
 
@@ -136,8 +222,12 @@ void generate_chains(graph<vertex> &GA, uintE root,
 template<class vertex>
 void create_connected_components(graph<vertex> &GA);
 
+
 template<class vertex>
-void create_partitions(graph<vertex> &GA, vector<chain *> &partitions);
+void create_strongly_connected_components(graph<vertex> &GA);
+
+template<class vertex>
+void create_partitions(graph<vertex> &GA, vector<chain *> &chains);
 
 void insert_edge(uintE src, uintE dst, chain *c);
 
@@ -150,12 +240,32 @@ void determine_dependency(chain *&c1, chain *&c2);
 void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<chain *, bool> &chain_visited,
                       map<uintE, vector<chain *> > &partitions);
 
+bool same_subgraph(uintE v1, uintE v2);
+
+bool same_subgraph(uintE v1, uintE v2) {
+    return subgraphs.find_set(v1) == subgraphs.find_set(v2);
+}
+
 void print_chain(chain *c, bool complete) {
     cout << "************" << endl;
 
     cout << "edges:" << endl;
     for (auto edge: c->edges) {
-        cout << "<" << edge.first << ", " << edge.second << "> ";
+        cout << "<";
+        cout << edge.first;
+        cout << ", ";
+        cout << edge.second;
+        cout << "> ";
+    }
+    cout << endl;
+
+    cout << "subgraph:" << endl;
+    for (auto edge: c->edges) {
+        cout << "<";
+        cout << subgraphs.find_set(edge.first);
+        cout << ", ";
+        cout << subgraphs.find_set(edge.second);
+        cout << "> ";
     }
     cout << endl;
 
@@ -684,8 +794,9 @@ void generate_chains(graph<vertex> &GA, uintE root,
 
     for (uintE i = 0; i < G[root].getOutDegree(); i++) {
         uintE neigh = G[root].getOutNeighbor(i);
+        //if (!same_subgraph(root, neigh)) continue;
         insert_edge(root, neigh, curr_chain);
-        if (!vertex_visited[neigh] ) {
+        if (!vertex_visited[neigh]) {
             generate_chains(GA, neigh,
                             depth + 1,
                             vertex_visited,
@@ -699,8 +810,7 @@ void create_connected_components(graph<vertex> &GA) {
     long n = GA.n;
     vertex *G = GA.V;
 
-    DSU subgraphs(n);
-    subgraphs.initialize();
+    subgraphs.initialize(n);
     for (uintE v = 0; v < GA.n; v++) {
         uintE d = G[v].getOutDegree();
         for (uintE j=0; j<d; j++) {
@@ -709,9 +819,21 @@ void create_connected_components(graph<vertex> &GA) {
         }
     }
 
+    set<uintE> unique_components;
     for (uintE v = 0; v < GA.n; v++) {
-        cout << v << " is in cc " << subgraphs.find_set(v) << endl;
+        unique_components.insert(subgraphs.find_set(v));
     }
+    cout << "number of connected components: " << unique_components.size() << endl;
+}
+
+template<class vertex>
+void create_strongly_connected_components(graph<vertex> &GA) {
+    long n = GA.n;
+    vertex *G = GA.V;
+
+    SCCs.initialize(n);
+    SCCs.find_scc(GA);
+    SCCs.print();
 }
 /** for old partitioning scheme **/
 
@@ -727,14 +849,44 @@ void partition_chains(chain *root, uintE level, vector<chain *> &chains, map<cha
 }
 
 template<class vertex>
-void create_partitions(graph<vertex> &GA, vector<chain *> &partitions) {
+void create_partitions(graph<vertex> &GA, vector<chain *> &chains) {
     map<uintE, bool> vertex_visited;
     for (uintE root = 0; root < GA.n; root++) {
         if (vertex_visited[root]) continue;
         auto *curr = new chain;
-        partitions.push_back(curr);
-        generate_chains(GA, (uintE) root, 0, vertex_visited, curr, partitions);
+        chains.push_back(curr);
+        generate_chains(GA, (uintE) root, 0, vertex_visited, curr, chains);
     }
+
+//    for (auto chain: chains) {
+//        uintE head = chain->edges[0].first;
+//        uintE set = subgraphs.find_set(head);
+//        if (partitions_gl[set].empty()) {
+//            partitions_gl[set] = {};
+//        }
+//        partitions_gl[set].emplace_back(chain);
+////        partitions_gl[subgraphs.find_set(chain->edges[0].first)].push_back(chain);
+//    }
+
+//    /** for testing purposes **/
+//    int num_edges = 0;
+//    bool you_fucked_up = false;
+//    for (auto chain: chains) {
+//        num_edges += chain->edges.size();
+//        for (auto edge: chain->edges) {
+//            if(!same_subgraph(edge.first, edge.second)) {
+//                you_fucked_up = true;
+//            }
+//        }
+//    }
+//    cout << "edge count in chains: " << num_edges;
+//    cout << ", ";
+//    cout << "total edge count: " << GA.m << endl;
+//    if (you_fucked_up) {
+//        cout << "WHAT DID YOU DO" << endl;
+//    } else {
+//        cout << "have a cookie :)" << endl;
+//    }
 }
 
 
@@ -773,7 +925,7 @@ int parallel_main(int argc, char *argv[]) {
 #endif
 #if defined(PARTITION)
             startTime();
-            create_partitions(G, partitions_gl);
+            create_partitions(G, chains_gl);
             nextTime("Preprocessing time");
 #endif
             Compute(G, P);
@@ -797,7 +949,7 @@ int parallel_main(int argc, char *argv[]) {
 #endif
 #if defined(PARTITION)
             startTime();
-            create_partitions(G, partitions_gl);
+            create_partitions(G, chains_gl);
             nextTime("Preprocessing time");
 #endif
             Compute(G, P);
@@ -825,7 +977,7 @@ int parallel_main(int argc, char *argv[]) {
 #endif
 #if defined(PARTITION)
             startTime();
-            create_partitions(G, partitions_gl);
+            create_partitions(G, chains_gl);
             nextTime("Preprocessing time");
 #endif
             Compute(G, P);
@@ -850,8 +1002,9 @@ int parallel_main(int argc, char *argv[]) {
 
 #if defined(PARTITION)
             startTime();
-            create_connected_components(G);
-            create_partitions(G, partitions_gl);
+            create_strongly_connected_components(G);
+            create_partitions(G, chains_gl);
+            exit(0);
             nextTime("Preprocessing time");
 #endif
 

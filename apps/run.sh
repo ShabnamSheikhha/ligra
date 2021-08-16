@@ -1,5 +1,5 @@
 EXE_DIR=/home/shabsheikhha/Documents/BSC/ligra/apps
-INPUT_DIR=/home/shabsheikhha/Documents/BSC/matrices
+INPUT_DIR=/home/shabsheikhha/Documents/BSC/matrices/test
 LOG_DIR=/home/shabsheikhha/Documents/BSC/ligra/apps/logs
 
 MODE=$1
@@ -39,4 +39,4 @@ fi
 make clean > tmp.log
 rm tmp.log
 make -j $ALG
-$command > $LOG_FILE
+$command #> $LOG_FILE
